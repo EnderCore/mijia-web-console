@@ -106,7 +106,7 @@ const props = defineProps({
     default: () => ({
       model: 'Xiaomi Smart Storage',
       cpu: { model: 'Realtek RTD1619B Quad-Core', cores: 4, usagePercent: 18, temp: 43.5 },
-      memory: { totalBytes: 2147483648, usedBytes: 901943132, usagePercent: 42.0 },
+      memory: { totalBytes: 4294967296, usedBytes: 1803886264, usagePercent: 42.0 },
       network: { linkSpeed: '2.5 Gbps', ip: '192.168.31.88' }
     })
   }

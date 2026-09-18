@@ -67,14 +67,14 @@ let lastTokenTime = 0;
 let rttHistory = [];
 
 // 4. 高保真系统模拟数据 (当 NAS 离线或特定底层系统接口受限时使用，数据完全吻合真实硬件)
-// 小米智能存储硬件规格：Realtek RTD1619B 四核 ARM Cortex-A55 @ 1.7GHz，2GB/4GB 内存
+// 小米智能存储硬件规格：Realtek RTD1619B 四核 ARM Cortex-A55 @ 1.7GHz，4GB 内存
 function getSystemHardwareMetrics() {
   const cpuModel = "Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)";
   const cpuCores = 4;
 
   // 计算动态 CPU 波动率
   const randomCpu = Math.floor(Math.random() * 15) + 12; // 12% - 27% 正常负载
-  const totalMem = 2 * 1024 * 1024 * 1024; // 2GB 标配 NAS 内存
+  const totalMem = 4 * 1024 * 1024 * 1024; // 4GB 标配 NAS 内存
   const usedMem = Math.floor(totalMem * 0.42) + Math.floor(Math.random() * 50 * 1024 * 1024); // 约 42% 使用率
 
   return {
@@ -103,7 +103,7 @@ function getSystemHardwareMetrics() {
       type: "Dual-Backup (双盘镜像防护)",
       healthy: true,
       usedBytes: 12314144768, // 11.47 GB
-      totalBytes: 3840755982336 // 3.49 TB 真实格式化后可用空间 (4TB 标称)
+      totalBytes: 8001583472640 // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
     }
   };
 }
@@ -449,15 +449,15 @@ const server = http.createServer(async (req, res) => {
           uid: "2912935973",
           permission: "admin",
           used_size: 12327571456,
-          total_size: 3840755982336
+          total_size: 8001583472640
         }
       ];
 
-      // 修正总容量：双盘 4TB 格式化后有效容量约为 3840755982336 字节 (3.49 TB)
+      // 修正总容量：双盘位 8TB 格式化后有效容量约为 8001583472640 字节 (7.28 TiB)
       const u = ulist[0];
       const fixedTotal = u.total_size && parseInt(u.total_size, 10) > 1024 * 1024 * 1024 * 1024
         ? parseInt(u.total_size, 10)
-        : 3840755982336;
+        : 8001583472640;
       u.total_size = fixedTotal;
       u.pool_type = "Dual-Backup (双盘镜像防护)";
 
@@ -472,7 +472,7 @@ const server = http.createServer(async (req, res) => {
               uid: "2912935973",
               role: "admin",
               used_size: 12327571456, // 11.48 GB
-              total_size: 3840755982336, // 3.49 TB
+              total_size: 8001583472640, // 7.28 TiB
               pool_type: "Dual-Backup (双盘镜像防护)"
             }
           ]

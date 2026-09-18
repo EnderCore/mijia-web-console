@@ -57,7 +57,7 @@ import { computed } from 'vue';
 
 const props = defineProps({
   usedBytes: { type: Number, default: 12314144768 },
-  totalBytes: { type: Number, default: 3840755982336 }, // 3.49 TB 真实格式化后可用空间
+  totalBytes: { type: Number, default: 8001583472640 }, // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
   uid: { type: String, default: '2912935973' },
   poolType: { type: String, default: '存储池 pool0 (双盘镜像)' }
 });

@@ -217,7 +217,7 @@ const statusInfo = ref({
 
 const storageData = ref({
   usedBytes: 12314144768,
-  totalBytes: 3840755982336, // 3.49 TB 真实格式化后可用空间
+  totalBytes: 8001583472640, // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
   uid: '2912935973',
   poolType: '存储池 pool0 (双盘镜像)'
 });
@@ -225,7 +225,7 @@ const storageData = ref({
 const systemHardwareInfo = ref({
   model: 'Xiaomi Smart Storage',
   cpu: { model: 'Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)', cores: 4, usagePercent: 18, temp: 43.5 },
-  memory: { totalBytes: 2147483648, usedBytes: 901943132, usagePercent: 42.0 },
+  memory: { totalBytes: 4294967296, usedBytes: 1803886264, usagePercent: 42.0 },
   network: { linkSpeed: '2.5 Gbps', ip: '192.168.31.88' }
 });
 
