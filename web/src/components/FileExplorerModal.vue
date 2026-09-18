@@ -71,12 +71,29 @@
           <!-- 工具栏：面包屑路径 + 排序方式 -->
           <div class="breadcrumb-bar">
             <div class="crumbs">
-              <span class="crumb-root" @click="searchKeyword = ''">🏠 我的存储</span>
-              <span class="crumb-sep">/</span>
-              <span class="crumb-cur">{{ currentCategoryName }}</span>
+              <span class="crumb-root" @click="navigateTo('/home/u2912935973/pool0/data')">🏠 根目录</span>
+              <template v-for="(seg, idx) in pathSegments" :key="idx">
+                <span class="crumb-sep">/</span>
+                <span 
+                  class="crumb-seg" 
+                  :class="{ 'crumb-cur': idx === pathSegments.length - 1 }"
+                  @click="navigateTo(seg.fullPath)"
+                >{{ seg.name }}</span>
+              </template>
             </div>
-            <div class="file-summary">
-              共 <b>{{ displayFiles.length }}</b> 个项目
+            
+            <div class="bar-actions">
+              <button 
+                v-if="pathStack.length > 1" 
+                class="up-btn" 
+                @click="navigateUp"
+                title="返回上一级"
+              >
+                ⬆ 返回上一级
+              </button>
+              <div class="file-summary">
+                共 <b>{{ displayFiles.length }}</b> 个项目
+              </div>
             </div>
           </div>
 
@@ -148,7 +165,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -157,10 +174,14 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'play-video', 'preview-photo']);
 
-const currentPath = ref('/home/u2912935973/pool0/data');
+const ROOT_PATH = '/home/u2912935973/pool0/data';
+const currentPath = ref(ROOT_PATH);
+const pathStack = ref([ROOT_PATH]);
 const searchKeyword = ref('');
 const viewMode = ref('grid'); // 'grid' | 'list'
 const activeCategory = ref('all');
+const currentFolderFiles = ref([]);
+const loadingFolder = ref(false);
 
 const categories = [
   { key: 'all', name: '全部文件', icon: '📂' },
@@ -173,13 +194,76 @@ const currentCategoryName = computed(() => {
   return categories.find(c => c.key === activeCategory.value)?.name || '全部文件';
 });
 
-function getCategoryCount(key) {
-  if (key === 'all') return props.files.length;
-  return props.files.filter(f => f.type === key).length;
+// 计算面包屑路径分段
+const pathSegments = computed(() => {
+  const rel = currentPath.value.replace(ROOT_PATH, '');
+  if (!rel || rel === '/') return [];
+  const parts = rel.split('/').filter(Boolean);
+  let acc = ROOT_PATH;
+  return parts.map(p => {
+    acc += '/' + p;
+    return { name: p, fullPath: acc };
+  });
+});
+
+// 加载指定目录下的子文件
+async function loadFolder(targetPath) {
+  loadingFolder.value = true;
+  try {
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(targetPath)}`);
+    const data = await res.json();
+    if (data.status === 'ok' && data.data?.files) {
+      currentFolderFiles.value = data.data.files;
+      currentPath.value = targetPath;
+    }
+  } catch (e) {
+    console.error('加载子文件夹失败:', e);
+  } finally {
+    loadingFolder.value = false;
+  }
 }
 
+// 导航到指定路径
+function navigateTo(targetPath) {
+  if (targetPath === ROOT_PATH) {
+    currentPath.value = ROOT_PATH;
+    pathStack.value = [ROOT_PATH];
+    currentFolderFiles.value = [];
+    return;
+  }
+  pathStack.value.push(targetPath);
+  loadFolder(targetPath);
+}
+
+// 返回上一级
+function navigateUp() {
+  if (pathStack.value.length > 1) {
+    pathStack.value.pop();
+    const prev = pathStack.value[pathStack.value.length - 1];
+    if (prev === ROOT_PATH) {
+      currentPath.value = ROOT_PATH;
+      currentFolderFiles.value = [];
+    } else {
+      loadFolder(prev);
+    }
+  }
+}
+
+// 监听弹窗显示，恢复根目录
+watch(() => props.visible, (val) => {
+  if (val) {
+    currentPath.value = ROOT_PATH;
+    pathStack.value = [ROOT_PATH];
+    currentFolderFiles.value = [];
+  }
+});
+
 const displayFiles = computed(() => {
-  let list = props.files;
+  // 如果在子文件夹内，优先显示子文件夹内容；在根目录时显示 props.files
+  let list = (currentPath.value !== ROOT_PATH && currentFolderFiles.value.length > 0)
+    ? currentFolderFiles.value
+    : props.files;
+
   if (activeCategory.value !== 'all') {
     list = list.filter(f => f.type === activeCategory.value);
   }
@@ -190,8 +274,16 @@ const displayFiles = computed(() => {
   return list;
 });
 
+function getCategoryCount(key) {
+  const list = (currentPath.value !== ROOT_PATH && currentFolderFiles.value.length > 0)
+    ? currentFolderFiles.value
+    : props.files;
+  if (key === 'all') return list.length;
+  return list.filter(f => f.type === key).length;
+}
+
 function getFileEmoji(file) {
-  if (file.xattr?.directory) return '📁';
+  if (file.isDir || file.xattr?.directory) return '📁';
   if (file.type === 'video') return '🎬';
   if (file.type === 'photo') return '🖼️';
   if (file.name?.endsWith('.pdf')) return '📕';
@@ -215,6 +307,12 @@ function formatDate(timestamp) {
 }
 
 function handleFileClick(file) {
+  // 如果点击的是文件夹，钻取进入子目录！
+  if (file.isDir || file.xattr?.directory || file.type === 'dir') {
+    navigateTo(file.path);
+    return;
+  }
+
   if (file.type === 'video') {
     emit('play-video', file);
   } else if (file.type === 'photo') {
@@ -470,6 +568,15 @@ function handleFileClick(file) {
   color: var(--mi-orange);
 }
 
+.crumb-seg {
+  cursor: pointer;
+  color: #475569;
+}
+
+.crumb-seg:hover {
+  color: var(--mi-orange);
+}
+
 .crumb-sep {
   color: #cbd5e1;
 }
@@ -477,6 +584,27 @@ function handleFileClick(file) {
 .crumb-cur {
   color: var(--mi-text-main);
   font-weight: 700;
+  cursor: default;
+}
+
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.up-btn {
+  background: #f1f5f9;
+  color: var(--mi-orange);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.up-btn:hover {
+  background: #fff7ed;
 }
 
 .file-summary {

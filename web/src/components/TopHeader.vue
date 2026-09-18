@@ -20,6 +20,12 @@
     </div>
 
     <div class="header-right">
+      <!-- 显式的 OpenList 文件中心快捷按钮 -->
+      <button class="openlist-nav-btn" @click="$emit('open-explorer')">
+        <span class="btn-icon">📁</span>
+        <span>OpenList 文件中心</span>
+      </button>
+
       <div class="stat-pill" v-if="urlPort">
         <span class="label">内网映射</span>
         <span class="val">127.0.0.1:{{ urlPort }}</span>
@@ -42,10 +48,32 @@ defineProps({
   loading: { type: Boolean, default: false }
 });
 
-defineEmits(['refresh']);
+defineEmits(['refresh', 'open-explorer']);
 </script>
 
 <style scoped>
+.openlist-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #ff6700, #ff8533);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(255, 103, 0, 0.25);
+  transition: all 0.2s;
+}
+
+.openlist-nav-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 103, 0, 0.35);
+}
+
+.btn-icon {
+  font-size: 15px;
+}
 .top-header {
   display: flex;
   justify-content: space-between;

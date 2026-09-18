@@ -482,48 +482,84 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 5. /api/files 全盘文件与媒体流 (严格对接 NAS 真实 search 接口)
+  // 5. /api/files 全盘文件与目录钻取 (严格对接 NAS 真实 search 接口)
   if (pathname === "/api/files") {
     try {
-      const resp = await callNasAPI("/cgi-bin/luci/filemgr/search", { keyword: "", type: "all" });
-      const rawList = resp.data?.data?.files || resp.data?.files || [];
-      if (rawList.length > 0) {
-        // 组装真实 NAS 文件并提供真实物理路径的缩略图代理
-        const mapped = rawList.map((f, idx) => {
-          const isPhoto = /\.(jpg|jpeg|png|heic|heif|webp|bmp|gif)$/i.test(f.name);
-          const isVideo = /\.(mp4|mkv|mov|avi|ts|flv|webm)$/i.test(f.name);
-          const fullPath = f.parent ? `${f.parent.replace(/\/$/, '')}/${f.name}` : (f.path || f.name);
-          const isDir = !!(f.xattr && f.xattr.directory);
+      await ensureReady();
+      const reqKeyword = parsedUrl.searchParams.get("keyword") || "";
+      const reqParent = parsedUrl.searchParams.get("parent") || "";
 
-          return {
-            id: `nas-${idx}`,
-            name: f.name,
-            parent: f.parent || "",
-            path: fullPath,
-            size: parseInt(f.size || 0, 10),
-            modified_time: parseInt(f.modified_time || Date.now(), 10),
-            type: isDir ? "doc" : (isPhoto ? "photo" : (isVideo ? "video" : "doc")),
-            thumbnail: (isPhoto || isVideo)
-              ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=small`
-              : (isDir ? generateSvgThumbnail(f.name, "#64748b", "#334155", "📁") : generateSvgThumbnail(f.name, "#94a3b8", "#475569", "📄")),
-            previewUrl: (isPhoto || isVideo)
-              ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview`
-              : "",
-            videoUrl: isVideo
-              ? `/api/stream?path=${encodeURIComponent(fullPath)}`
-              : "",
-            xattr: f.xattr
-          };
-        });
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ data: { files: mapped } }));
-        return;
+      let searchBody = {};
+      if (reqParent) {
+        // 进入指定子目录时，严格采用官方 options 路径结构
+        searchBody = {
+          type: "all",
+          page: { size: 500, token: "" },
+          options: {
+            option: ["path"],
+            path: {
+              parent: reqParent,
+              recursion: false
+            }
+          },
+          show_dotfile: false
+        };
+      } else {
+        // 根视图：列出根目录或全局关键字搜索
+        searchBody = {
+          keyword: reqKeyword,
+          type: "all",
+          page: { size: 200, token: "" }
+        };
       }
+
+      const resp = await callNasAPI("/cgi-bin/luci/filemgr/search", searchBody);
+      const rawList = resp.data?.data?.files || resp.data?.files || [];
+
+      // 转换为前端统一标准格式
+      const mapped = rawList.map((f, idx) => {
+        const isPhoto = /\.(jpg|jpeg|png|heic|heif|webp|bmp|gif)$/i.test(f.name);
+        const isVideo = /\.(mp4|mkv|mov|avi|ts|flv|webm)$/i.test(f.name);
+        const fullPath = f.parent ? `${f.parent.replace(/\/$/, '')}/${f.name}` : (f.path || f.name);
+        const isDir = !!(f.xattr && f.xattr.directory);
+
+        return {
+          id: `nas-${idx}`,
+          name: f.name,
+          parent: f.parent || "",
+          path: fullPath,
+          size: parseInt(f.size || 0, 10),
+          modified_time: parseInt(f.modified_time || Date.now(), 10),
+          isDir: isDir,
+          type: isDir ? "dir" : (isPhoto ? "photo" : (isVideo ? "video" : "doc")),
+          thumbnail: (isPhoto || isVideo)
+            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=small`
+            : (isDir ? generateSvgThumbnail(f.name, "#64748b", "#334155", "📁") : generateSvgThumbnail(f.name, "#94a3b8", "#475569", "📄")),
+          previewUrl: (isPhoto || isVideo)
+            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview`
+            : "",
+          videoUrl: isVideo
+            ? `/api/stream?path=${encodeURIComponent(fullPath)}`
+            : "",
+          xattr: f.xattr
+        };
+      });
+
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ data: { files: FULL_MEDIA_FILES } }));
+      res.end(JSON.stringify({
+        status: "ok",
+        currentParent: reqParent,
+        total: resp.data?.data?.page?.total_size || mapped.length,
+        data: { files: mapped }
+      }));
     } catch (e) {
+      console.error("[gateway] 获取 NAS 真实文件失败:", e.message);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ data: { files: FULL_MEDIA_FILES } }));
+      res.end(JSON.stringify({
+        status: "error",
+        message: "无法连接到小米智能存储设备: " + e.message,
+        data: { files: [] }
+      }));
     }
     return;
   }

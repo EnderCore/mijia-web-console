@@ -8,6 +8,7 @@
       :url-port="statusInfo.urlPort"
       :loading="refreshing"
       @refresh="loadAllData"
+      @open-explorer="showFileExplorer = true"
     />
 
     <!-- 主界面内容区 (仿米家卡片式极简布局) -->
@@ -439,11 +440,10 @@ function handlePlayVideo(file) {
 
 let timer = null;
 onMounted(async () => {
-  // 先尝试快速从本地缓存秒开渲染
-  const cachedStatus = await getCachedData('cache_status');
-  if (cachedStatus) statusInfo.value = cachedStatus;
-  const cachedFiles = await getCachedData('cache_files');
-  if (cachedFiles) recentFiles.value = cachedFiles.data?.files || cachedFiles.files || [];
+  // 清除旧版本遗留的模拟假数据缓存，强制直通真实 NAS
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('mijia_cache_files');
+  }
 
   loadAllData();
   // 每 8 秒自动轮询一次网络状态与硬件探针
