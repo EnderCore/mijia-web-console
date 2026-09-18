@@ -1,0 +1,13 @@
+{
+  "name": "mijia-web-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local mTLS relay gateway for Xiaomi Smart Storage web console",
+  "main": "gateway.js",
+  "scripts": {
+    "start": "node gateway.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

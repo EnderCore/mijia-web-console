@@ -1,0 +1,26 @@
+{
+  "name": "mijia-web-console",
+  "version": "1.0.0",
+  "description": "Open-source 1:1 web replica of Xiaomi Smart Storage (Mi NAS) official client UI, powered by the reverse-engineered P2P/mTLS tunnel.",
+  "private": false,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/gateway.js",
+    "dev:web": "cd web && npm run dev",
+    "build": "cd web && npm run build",
+    "start": "node server/gateway.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "xiaomi",
+    "mijia",
+    "nas",
+    "smart-storage",
+    "reverse-engineering",
+    "p2p",
+    "mtls"
+  ]
+}
