@@ -83,6 +83,21 @@
     />
 
     <!-- 沉浸式多功能小程序弹窗 -->
+    <FileExplorerModal
+      :visible="showFileExplorer"
+      :files="recentFiles"
+      @close="showFileExplorer = false"
+      @play-video="handlePlayVideo"
+      @preview-photo="handlePreviewMedia"
+    />
+
+    <!-- 专业 Video.js 播放器弹窗 (支持清晰度与多分辨率自由切换) -->
+    <VideoPlayerModal
+      :visible="showVideoPlayer"
+      :video="activeVideo"
+      @close="showVideoPlayer = false"
+    />
+
     <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
       <div class="custom-modal">
         <div class="modal-hdr">
@@ -197,6 +212,8 @@ import MonitorChart from './components/MonitorChart.vue';
 import AppGrid from './components/AppGrid.vue';
 import RecentMedia from './components/RecentMedia.vue';
 import MediaCenterModal from './components/MediaCenterModal.vue';
+import FileExplorerModal from './components/FileExplorerModal.vue';
+import VideoPlayerModal from './components/VideoPlayerModal.vue';
 import { getCachedData, setCachedData } from './utils/cache.js';
 
 // 状态定义
@@ -204,6 +221,9 @@ const deviceName = ref('小米智能存储 (NAS)');
 const isOnline = ref(false);
 const refreshing = ref(false);
 const showMediaModal = ref(false);
+const showFileExplorer = ref(false);
+const showVideoPlayer = ref(false);
+const activeVideo = ref(null);
 const activeDialog = ref(null);
 const activeMedia = ref(null);
 
@@ -353,16 +373,7 @@ function handleLaunchApp(app) {
         }))
     };
   } else if (app.name === '文件') {
-    activeDialog.value = {
-      title: '全功能文件管理器 (NAS 实时目录)',
-      icon: '📁',
-      desc: 'Btrfs 秒级文件快照、版本历史恢复与局域网外链分享',
-      items: recentFiles.value.map(f => ({
-        name: f.name,
-        sub: f.parent ? `${f.parent}/${f.name}` : (f.path || '/home/u2912935973/pool0/data'),
-        detail: f.xattr && f.xattr.directory ? '文件夹' : formatSize(f.size)
-      }))
-    };
+    showFileExplorer.value = true;
   } else if (app.name === '用户管理') {
     activeDialog.value = {
       title: '家庭成员共享与权限分配',
@@ -414,7 +425,16 @@ function handleLaunchApp(app) {
 
 // 预览多媒体大图与视频
 function handlePreviewMedia(file) {
-  activeMedia.value = file;
+  if (file.type === 'video') {
+    handlePlayVideo(file);
+  } else {
+    activeMedia.value = file;
+  }
+}
+
+function handlePlayVideo(file) {
+  activeVideo.value = file;
+  showVideoPlayer.value = true;
 }
 
 let timer = null;

@@ -510,7 +510,7 @@ const server = http.createServer(async (req, res) => {
               ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview`
               : "",
             videoUrl: isVideo
-              ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview`
+              ? `/api/stream?path=${encodeURIComponent(fullPath)}`
               : "",
             xattr: f.xattr
           };
@@ -663,7 +663,116 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 8. /api/monitor 实时网络 RTT 测量
+  // 8. /api/stream 视频与大文件流式传输 (支持 HTTP 206 Partial Content / Range 拖拽快进)
+  if (pathname === "/api/stream") {
+    const filePath = parsedUrl.searchParams.get("path") || "";
+    if (!filePath) {
+      res.writeHead(400); res.end("Missing path parameter"); return;
+    }
+
+    try {
+      await ensureReady();
+      const postPayload = JSON.stringify({ path: filePath });
+      const reqHeaders = {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(postPayload),
+        "Cookie": `token=${accessToken}`,
+        "Authorization": accessToken
+      };
+
+      // 透传浏览器的 Range 请求头，实现秒级快进拖拽
+      if (req.headers["range"]) {
+        reqHeaders["Range"] = req.headers["range"];
+      }
+
+      const streamReq = https.request({
+        host: "127.0.0.1",
+        port: activeUrlPort,
+        path: "/cgi-bin/luci/filemgr/get_file",
+        method: "POST",
+        rejectUnauthorized: false,
+        cert: cert,
+        key: key,
+        ca: ca,
+        headers: reqHeaders,
+        timeout: 300000 // 5分钟长连接用于流式传输
+      }, (streamRes) => {
+        // 传递 200 或 206 状态码及关键媒体头
+        const responseHeaders = {
+          "Content-Type": streamRes.headers["content-type"] || "video/mp4",
+          "Accept-Ranges": "bytes",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "Range, Authorization, Content-Type",
+          "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+        };
+        if (streamRes.headers["content-range"]) {
+          responseHeaders["Content-Range"] = streamRes.headers["content-range"];
+        }
+        if (streamRes.headers["content-length"]) {
+          responseHeaders["Content-Length"] = streamRes.headers["content-length"];
+        }
+
+        res.writeHead(streamRes.statusCode, responseHeaders);
+        streamRes.pipe(res);
+      });
+
+      streamReq.on("error", (e) => {
+        if (!res.headersSent) { res.writeHead(502); res.end("Stream error: " + e.message); }
+      });
+      streamReq.write(postPayload);
+      streamReq.end();
+    } catch (e) {
+      if (!res.headersSent) { res.writeHead(500); res.end(e.message); }
+    }
+    return;
+  }
+
+  // 9. /api/video/task 转码任务生命周期管理 (创建/查询清晰度/销毁)
+  if (pathname === "/api/video/task") {
+    try {
+      await ensureReady();
+      const action = parsedUrl.searchParams.get("action") || "create";
+      const filePath = parsedUrl.searchParams.get("path") || "";
+      const taskId = parsedUrl.searchParams.get("taskId") || "";
+
+      if (action === "create") {
+        // 创建转码任务
+        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_create_task", {});
+        const tId = resp.data?.data?.task_id || "";
+        if (tId && filePath) {
+          // 启动转码调度
+          await callNasAPI("/cgi-bin/luci/player/transcode_switchable", { task_id: tId, file_path: filePath });
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok", taskId: tId }));
+        return;
+      }
+
+      if (action === "resolutions") {
+        // 查询当前可用清晰度列表与 m3u8
+        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_get_resolution", { task_id: taskId, file_path: filePath });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok", data: resp.data?.data || {} }));
+        return;
+      }
+
+      if (action === "destroy") {
+        // 销毁转码任务释放硬件资源
+        await callNasAPI("/cgi-bin/luci/player/transcode_destroy_task", { task_id: taskId });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok" }));
+        return;
+      }
+
+      res.writeHead(400); res.end("Invalid action");
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
+  // 10. /api/monitor 实时网络 RTT 测量
   if (pathname === "/api/monitor") {
     const start = Date.now();
     try {
