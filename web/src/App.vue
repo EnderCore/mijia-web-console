@@ -90,6 +90,7 @@
       @close="showFileExplorer = false"
       @play-video="handlePlayVideo"
       @preview-photo="handlePreviewMedia"
+      @preview-doc="handlePreviewDoc"
     />
 
     <!-- 专业 Video.js 播放器弹窗 (支持清晰度与多分辨率自由切换) -->
@@ -97,6 +98,13 @@
       :visible="showVideoPlayer"
       :video="activeVideo"
       @close="showVideoPlayer = false"
+    />
+
+    <!-- 通用文档与文本在线阅读器 (支持 PDF / TXT / MD / 代码 / 音频) -->
+    <DocumentViewerModal
+      :visible="showDocViewer"
+      :file="activeDoc"
+      @close="showDocViewer = false"
     />
 
     <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
@@ -215,6 +223,7 @@ import RecentMedia from './components/RecentMedia.vue';
 import MediaCenterModal from './components/MediaCenterModal.vue';
 import FileExplorerModal from './components/FileExplorerModal.vue';
 import VideoPlayerModal from './components/VideoPlayerModal.vue';
+import DocumentViewerModal from './components/DocumentViewerModal.vue';
 import { getCachedData, setCachedData } from './utils/cache.js';
 
 // 状态定义
@@ -224,7 +233,9 @@ const refreshing = ref(false);
 const showMediaModal = ref(false);
 const showFileExplorer = ref(false);
 const showVideoPlayer = ref(false);
+const showDocViewer = ref(false);
 const activeVideo = ref(null);
+const activeDoc = ref(null);
 const activeDialog = ref(null);
 const activeMedia = ref(null);
 
@@ -428,14 +439,21 @@ function handleLaunchApp(app) {
 function handlePreviewMedia(file) {
   if (file.type === 'video') {
     handlePlayVideo(file);
-  } else {
+  } else if (file.type === 'photo') {
     activeMedia.value = file;
+  } else {
+    handlePreviewDoc(file);
   }
 }
 
 function handlePlayVideo(file) {
   activeVideo.value = file;
   showVideoPlayer.value = true;
+}
+
+function handlePreviewDoc(file) {
+  activeDoc.value = file;
+  showDocViewer.value = true;
 }
 
 let timer = null;

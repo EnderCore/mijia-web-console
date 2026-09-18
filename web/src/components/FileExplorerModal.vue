@@ -172,7 +172,7 @@ const props = defineProps({
   files: { type: Array, default: () => [] }
 });
 
-const emit = defineEmits(['close', 'play-video', 'preview-photo']);
+const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc']);
 
 const ROOT_PATH = '/home/u2912935973/pool0/data';
 const currentPath = ref(ROOT_PATH);
@@ -317,6 +317,9 @@ function handleFileClick(file) {
     emit('play-video', file);
   } else if (file.type === 'photo') {
     emit('preview-photo', file);
+  } else {
+    // 文本、代码、PDF、音频或其它格式唤起通用文档预览器！
+    emit('preview-doc', file);
   }
 }
 </script>
