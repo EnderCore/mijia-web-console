@@ -242,7 +242,7 @@ function formatHours(h) {
 
 .progress-bar {
   height: 10px;
-  background: #eaedf1;
+  background: var(--mi-control-sub-bg, #eaedf1);
   border-radius: 5px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -270,7 +270,7 @@ function formatHours(h) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg, #f8fafc);
   padding: 14px;
   border-radius: var(--mi-radius-md);
   border: 1px solid var(--mi-border);
@@ -318,7 +318,7 @@ function formatHours(h) {
 }
 
 .disk-row {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg, #f8fafc);
   border: 1px solid var(--mi-border);
   border-radius: var(--mi-radius-md);
   padding: 10px 12px;

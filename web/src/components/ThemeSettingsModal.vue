@@ -424,7 +424,7 @@ async function handleImportFile(e) {
 .preset-card {
   position: relative;
   text-align: left;
-  background: white;
+  background: var(--mi-card-sub-bg, white);
   border: 2px solid var(--mi-border);
   border-radius: 12px;
   padding: 12px;
@@ -440,7 +440,7 @@ async function handleImportFile(e) {
 
 .preset-card.active {
   border-color: var(--mi-orange);
-  background: rgba(255, 103, 0, 0.04);
+  background: rgba(255, 103, 0, 0.08);
   box-shadow: 0 4px 16px rgba(255, 103, 0, 0.15);
 }
 
@@ -481,7 +481,7 @@ async function handleImportFile(e) {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  background: white;
+  background: var(--mi-card-sub-bg, white);
   border: 1.5px solid var(--mi-border);
   padding: 10px 12px;
   border-radius: 10px;
@@ -495,7 +495,7 @@ async function handleImportFile(e) {
 
 .scope-option.active {
   border-color: var(--mi-orange);
-  background: rgba(255, 103, 0, 0.04);
+  background: rgba(255, 103, 0, 0.08);
 }
 
 .scope-option input {
@@ -533,7 +533,7 @@ async function handleImportFile(e) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #ffffff;
+  background: var(--mi-control-bg, #ffffff);
   border: 1px solid var(--mi-border);
   color: var(--mi-text-main);
   padding: 7px 14px;
@@ -545,7 +545,7 @@ async function handleImportFile(e) {
 }
 
 .action-btn:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   border-color: #cbd5e1;
 }
 
@@ -612,7 +612,7 @@ async function handleImportFile(e) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: white;
+  background: var(--mi-control-bg, white);
   border: 1px solid var(--mi-border);
   padding: 8px 14px;
   border-radius: 8px;
@@ -624,7 +624,7 @@ async function handleImportFile(e) {
 }
 
 .io-btn:hover {
-  background: #f8fafc;
+  background: var(--mi-control-sub-bg, #f8fafc);
   border-color: var(--mi-orange);
 }
 

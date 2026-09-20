@@ -5,6 +5,9 @@
   --mi-green: #2ecc71;
   --mi-bg: #f5f6f8;
   --mi-card-bg: #ffffff;
+  --mi-card-sub-bg: #f8fafc;
+  --mi-control-bg: #ffffff;
+  --mi-control-sub-bg: #f1f5f9;
   --mi-card-border: #eaedf1;
   --mi-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
   --mi-backdrop-blur: none;
@@ -23,6 +26,115 @@
   --mi-bg-blur: 0px;
   --mi-bg-opacity: 1;
   --mi-bg-tint: rgba(245, 246, 248, 0.6);
+}
+
+/* 全局暗色调系统适配 (Dark Mode System) */
+html.dark {
+  --mi-bg: #0b0f19 !important;
+  --mi-card-bg: #151d2f !important;
+  --mi-card-sub-bg: #1e293b !important;
+  --mi-control-bg: #1e293b !important;
+  --mi-control-sub-bg: #283548 !important;
+  --mi-text-main: #f1f5f9 !important;
+  --mi-text-sub: #94a3b8 !important;
+  --mi-border: #283548 !important;
+  --mi-card-border: #283548 !important;
+  --mi-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  --mi-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+  --mi-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+html.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+/* 强制暗化所有卡片、容器与弹窗 */
+html.dark .top-header,
+html.dark .app-footer,
+html.dark .custom-modal,
+html.dark .explorer-modal,
+html.dark .modal-backdrop,
+html.dark .storage-card,
+html.dark .chart-card,
+html.dark .grid-card,
+html.dark .recent-card,
+html.dark .file-card,
+html.dark .media-item,
+html.dark .app-item,
+html.dark .column-box,
+html.dark .column-item,
+html.dark .files-table-box,
+html.dark .tree-box,
+html.dark .files-table tr,
+html.dark .section-box,
+html.dark .set-row,
+html.dark .detail-item,
+html.dark .hw-item,
+html.dark .disk-item,
+html.dark .preset-card,
+html.dark .scope-option,
+html.dark .mode-btn,
+html.dark .io-btn,
+html.dark .action-btn {
+  background-color: var(--mi-card-bg) !important;
+  border-color: var(--mi-border) !important;
+  color: var(--mi-text-main) !important;
+}
+
+html.dark .section-box,
+html.dark .column-box,
+html.dark .tree-box,
+html.dark .set-row,
+html.dark .detail-item,
+html.dark .hw-item,
+html.dark .disk-item,
+html.dark .scope-option,
+html.dark .preset-card,
+html.dark .mode-btn,
+html.dark .io-btn,
+html.dark .action-btn {
+  background-color: var(--mi-card-sub-bg) !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: var(--mi-control-bg) !important;
+  border-color: var(--mi-border) !important;
+  color: var(--mi-text-main) !important;
+}
+
+html.dark .files-table th {
+  background-color: var(--mi-card-sub-bg) !important;
+  border-color: var(--mi-border) !important;
+  color: var(--mi-text-sub) !important;
+}
+
+html.dark .files-table td {
+  border-color: var(--mi-border) !important;
+}
+
+html.dark .table-row:hover,
+html.dark .column-item:hover,
+html.dark .tree-node:hover {
+  background-color: var(--mi-control-sub-bg) !important;
+}
+
+html.dark .column-item.selected,
+html.dark .tree-node.selected {
+  background-color: rgba(255, 103, 0, 0.15) !important;
+}
+
+html.dark .load-more-btn {
+  background-color: var(--mi-card-sub-bg) !important;
+  border-color: var(--mi-border) !important;
+  color: var(--mi-text-main) !important;
+}
+
+html.dark .load-more-btn:hover {
+  background-color: var(--mi-control-sub-bg) !important;
+  color: var(--mi-orange) !important;
 }
 
 /* 云母与亚克力玻璃拟态主题 (Mica Glassmorphism) */

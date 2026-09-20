@@ -332,7 +332,7 @@ const lastPoint = computed(() => {
 
 .hw-bar {
   height: 6px;
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg, #e2e8f0);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -360,7 +360,7 @@ const lastPoint = computed(() => {
 }
 
 .tunnel-info {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg, #f8fafc);
   border-radius: var(--mi-radius-md);
   padding: 12px 14px;
   margin-bottom: 16px;

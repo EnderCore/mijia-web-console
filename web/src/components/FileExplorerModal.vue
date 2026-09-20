@@ -996,7 +996,7 @@ function handleFileClick(file) {
   width: 92vw;
   max-width: 1380px;
   height: 88vh;
-  background: #ffffff;
+  background: var(--mi-card-bg, #ffffff);
   border-radius: var(--mi-radius-lg);
   display: flex;
   flex-direction: column;
@@ -1010,7 +1010,7 @@ function handleFileClick(file) {
   align-items: center;
   padding: 16px 24px;
   border-bottom: 1px solid var(--mi-border);
-  background: #fcfdfe;
+  background: var(--mi-card-sub-bg, #fcfdfe);
 }
 
 .header-left {
@@ -1031,8 +1031,8 @@ function handleFileClick(file) {
 
 .path-badge {
   font-size: 11px;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--mi-control-sub-bg, #f1f5f9);
+  color: var(--mi-text-sub);
   padding: 3px 8px;
   border-radius: 6px;
   font-family: monospace;
@@ -1048,7 +1048,7 @@ function handleFileClick(file) {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   border-radius: 20px;
   padding: 6px 14px;
   width: 220px;
@@ -1060,11 +1060,12 @@ function handleFileClick(file) {
   outline: none;
   font-size: 12px;
   width: 100%;
+  color: var(--mi-text-main);
 }
 
 .view-toggle {
   display: flex;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   border-radius: 8px;
   padding: 2px;
 }
@@ -1073,19 +1074,19 @@ function handleFileClick(file) {
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--mi-text-sub);
   transition: all 0.15s;
 }
 
 .v-btn.active {
-  background: #ffffff;
+  background: var(--mi-control-bg, #ffffff);
   color: var(--mi-orange);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .close-x {
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 4px 8px;
 }
 
@@ -1098,8 +1099,8 @@ function handleFileClick(file) {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--mi-control-sub-bg, #f1f5f9);
+  color: var(--mi-text-main);
   padding: 6px 12px;
   border-radius: 18px;
   font-size: 12px;
@@ -1849,7 +1850,7 @@ function handleFileClick(file) {
   border: 1px solid var(--mi-border);
   border-radius: 12px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--mi-card-sub-bg, #ffffff);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1864,7 +1865,7 @@ function handleFileClick(file) {
 
 .card-preview {
   height: 120px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1917,7 +1918,7 @@ function handleFileClick(file) {
 
 /* 列表表格 */
 .files-table-box {
-  background: #ffffff;
+  background: var(--mi-card-sub-bg, #ffffff);
   border: 1px solid var(--mi-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1930,18 +1931,18 @@ function handleFileClick(file) {
 }
 
 .files-table th {
-  background: #f8fafc;
+  background: var(--mi-control-sub-bg, #f8fafc);
   padding: 12px 16px;
   text-align: left;
   font-weight: 600;
-  color: #475569;
+  color: var(--mi-text-sub);
   border-bottom: 1px solid var(--mi-border);
 }
 
 .files-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid var(--mi-border, #f1f5f9);
+  color: var(--mi-text-main);
 }
 
 .table-row {
@@ -1950,7 +1951,7 @@ function handleFileClick(file) {
 }
 
 .table-row:hover {
-  background: #f8fafc;
+  background: var(--mi-control-bg, #f8fafc);
 }
 
 .name-cell {

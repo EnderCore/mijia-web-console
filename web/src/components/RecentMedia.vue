@@ -183,7 +183,7 @@ function formatDate(timestamp) {
 .file-count {
   font-size: 12px;
   color: var(--mi-text-sub);
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   padding: 3px 10px;
   border-radius: 12px;
 }
@@ -200,12 +200,12 @@ function formatDate(timestamp) {
   font-size: 13px;
   font-weight: 600;
   color: var(--mi-text-sub);
-  background: #f5f6f8;
+  background: var(--mi-control-sub-bg, #f5f6f8);
   transition: all 0.2s;
 }
 
 .tab-btn:hover {
-  background: #edf0f4;
+  background: var(--mi-control-bg, #edf0f4);
   color: var(--mi-text-main);
 }
 
@@ -225,7 +225,7 @@ function formatDate(timestamp) {
 
 .limit-select {
   border: 1px solid var(--mi-border);
-  background: #ffffff;
+  background: var(--mi-control-bg, #ffffff);
   color: var(--mi-text-main);
   border-radius: 8px;
   padding: 4px 8px;
@@ -240,7 +240,7 @@ function formatDate(timestamp) {
 }
 
 .load-more-btn {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   color: var(--mi-orange);
   border: 1px solid var(--mi-border);
   border-radius: 20px;
@@ -252,7 +252,7 @@ function formatDate(timestamp) {
 }
 
 .load-more-btn:hover {
-  background: #fff7ed;
+  background: rgba(255, 103, 0, 0.1);
   border-color: var(--mi-orange);
 }
 
@@ -269,7 +269,7 @@ function formatDate(timestamp) {
 
 .media-item {
   border-radius: var(--mi-radius-md);
-  background: #ffffff;
+  background: var(--mi-card-sub-bg, #ffffff);
   border: 1px solid var(--mi-border);
   overflow: hidden;
   cursor: pointer;

@@ -98,7 +98,7 @@ function handleAppClick(app) {
 .count-tag {
   font-size: 12px;
   color: var(--mi-text-sub);
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   padding: 2px 8px;
   border-radius: 10px;
 }
@@ -106,7 +106,7 @@ function handleAppClick(app) {
 .category-pills .pill-badge {
   font-size: 12px;
   color: var(--mi-orange);
-  background: #fff7ed;
+  background: rgba(255, 103, 0, 0.1);
   padding: 4px 12px;
   border-radius: 12px;
   font-weight: 600;
@@ -124,16 +124,16 @@ function handleAppClick(app) {
   align-items: center;
   padding: 16px 8px;
   border-radius: var(--mi-radius-md);
-  background: #fcfdfe;
-  border: 1px solid transparent;
+  background: var(--mi-card-sub-bg, #fcfdfe);
+  border: 1px solid var(--mi-border, transparent);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   position: relative;
 }
 
 .app-card:hover {
-  background: #ffffff;
-  border-color: var(--mi-border);
+  background: var(--mi-control-bg, #ffffff);
+  border-color: var(--mi-orange);
   box-shadow: var(--mi-shadow-hover);
   transform: translateY(-2px);
 }
