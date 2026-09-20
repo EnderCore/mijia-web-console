@@ -137,7 +137,8 @@ html.dark .action-btn,
 html.dark .hw-item,
 html.dark .disk-row,
 html.dark .details-grid,
-html.dark .tunnel-info {
+html.dark .tunnel-info,
+html.dark .icon-wrapper {
   background-color: var(--mi-card-sub-bg) !important;
   border-color: var(--mi-border) !important;
 }

@@ -142,13 +142,15 @@ function handleAppClick(app) {
   width: 52px;
   height: 52px;
   border-radius: 14px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border: 1px solid var(--mi-border, transparent);
+  transition: all 0.2s ease;
 }
 
 .app-img {
