@@ -349,6 +349,26 @@ function ensureWebdavCreds() {
 // 向 NAS 的 WebDAV 端点发起请求 (mTLS + HTTP Basic)
 // 注意：WebDAV 的根是 alias_root (/home/u<UID>)，路径必须相对于它，否则 Nginx 返回 451。
 // 返回 Node 的 ClientRequest，调用方可自行 pipe 请求体并监听 'response'。
+// WebDAV 请求路径必须逐段百分号编码，否则含中文/空格/特殊字符的路径
+// 会让 Node 抛出 ERR_UNESCAPED_CHARACTERS，请求根本发不出去。
+// 这里逐段处理是为了保留 "/" 作为分隔符；同时先解码再编码，
+// 保证对已编码的输入也是幂等的，不会造成双重编码。
+function encodeWebdavPath(p) {
+  return p
+    .split("/")
+    .map((seg) => {
+      if (!seg) return seg;
+      let raw = seg;
+      try {
+        raw = decodeURIComponent(seg);
+      } catch (e) {
+        // 非法百分号序列，按原始文本处理
+      }
+      return encodeURIComponent(raw);
+    })
+    .join("/");
+}
+
 function openWebdavRequest(method, apiPath, headers = {}, timeoutMs = 600000) {
   const creds = ensureWebdavCreds();
   if (!creds) {
@@ -369,7 +389,7 @@ function openWebdavRequest(method, apiPath, headers = {}, timeoutMs = 600000) {
   const req = https.request({
     host: "127.0.0.1",
     port: activeWebdavPort,
-    path: relative || "/",
+    path: encodeWebdavPath(relative || "/"),
     method: method,
     rejectUnauthorized: false,
     cert: cert,
