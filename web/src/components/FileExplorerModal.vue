@@ -103,52 +103,16 @@
               <span class="node-name">存储根目录</span>
             </div>
 
-            <!-- 递归多级文件夹树 -->
+            <!-- 真正的无限级递归文件夹树 (支持 1级、2级、3级、4级...任意深度自由展开) -->
             <div class="tree-subnodes">
-              <div 
-                v-for="node in folderTree" 
+              <FolderTreeNode
+                v-for="node in folderTree"
                 :key="node.path"
-                class="tree-branch"
-              >
-                <div 
-                  class="tree-node-item"
-                  :class="{ active: currentPath === node.path }"
-                  :style="{ paddingLeft: (node.level * 14 + 10) + 'px' }"
-                  @click="handleTreeNodeClick(node)"
-                >
-                  <span 
-                    class="node-arrow" 
-                    :class="{ expanded: node.expanded, loading: node.loading }"
-                    @click.stop="toggleTreeNode(node)"
-                  >
-                    {{ node.loading ? '⏳' : (node.hasChildren !== false ? (node.expanded ? '▼' : '▶') : '·') }}
-                  </span>
-                  <span class="node-icon">📁</span>
-                  <span class="node-name" :title="node.name">{{ node.name }}</span>
-                </div>
-
-                <!-- 展开的二级子节点 -->
-                <div v-if="node.expanded && node.children && node.children.length" class="tree-children-box">
-                  <div 
-                    v-for="sub in node.children" 
-                    :key="sub.path"
-                    class="tree-node-item"
-                    :class="{ active: currentPath === sub.path }"
-                    :style="{ paddingLeft: ((node.level + 1) * 14 + 14) + 'px' }"
-                    @click="handleTreeNodeClick(sub)"
-                  >
-                    <span 
-                      class="node-arrow" 
-                      :class="{ expanded: sub.expanded, loading: sub.loading }"
-                      @click.stop="toggleTreeNode(sub)"
-                    >
-                      {{ sub.loading ? '⏳' : (sub.hasChildren !== false ? (sub.expanded ? '▼' : '▶') : '·') }}
-                    </span>
-                    <span class="node-icon">📁</span>
-                    <span class="node-name" :title="sub.name">{{ sub.name }}</span>
-                  </div>
-                </div>
-              </div>
+                :node="node"
+                :current-path="currentPath"
+                @select-node="handleTreeNodeClick"
+                @toggle-node="toggleTreeNode"
+              />
             </div>
           </div>
 
@@ -367,6 +331,7 @@
 import { ref, computed, watch } from 'vue';
 import { maskValue } from '../utils/privacy.js';
 import { vSmartPreload } from '../utils/preloader.js';
+import FolderTreeNode from './FolderTreeNode.vue';
 
 // 路径脱敏只掩盖 /home/u<UID> 的账号段，目录结构保留，
 // 否则面包屑与路径展示会失去导航参考意义。
