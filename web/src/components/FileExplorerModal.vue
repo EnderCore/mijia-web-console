@@ -21,6 +21,9 @@
           </div>
 
           <!-- 上传与新建操作 -->
+          <button class="action-pill" @click="$emit('open-history')" title="最近打开的文件">
+            <span>🕐</span><span>最近打开</span>
+          </button>
           <button class="action-pill upload-pill" @click="triggerFilePick" :disabled="uploading">
             <span>{{ uploading ? '⏳' : '📤' }}</span>
             <span>{{ uploading ? uploadProgress + '%' : '上传' }}</span>
@@ -148,6 +151,7 @@
 
                 <!-- 卡片悬浮操作按钮 -->
                 <div class="card-actions" @click.stop>
+                  <button class="ca-btn" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
                   <button class="ca-btn" @click="downloadFile(file)" title="下载">📥</button>
                   <button class="ca-btn danger" @click="deleteFile(file)" title="删除">🗑</button>
                 </div>
@@ -189,6 +193,7 @@
                   <td class="font-mono">{{ formatSize(file.size) }}</td>
                   <td class="time-text">{{ formatDate(file.modified_time) }}</td>
                   <td class="ops-cell" @click.stop>
+                    <button class="row-op" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
                     <button class="row-op" @click="downloadFile(file)" title="下载">📥</button>
                     <button class="row-op danger" @click="deleteFile(file)" title="删除">🗑</button>
                   </td>
@@ -219,7 +224,7 @@ const props = defineProps({
   rootPath: { type: String, default: '' }
 });
 
-const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc', 'refresh']);
+const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc', 'refresh', 'file-detail', 'open-history']);
 
 // 网关未返回根路径时保持为空，避免误用他人路径
 const ROOT_PATH = computed(() => props.rootPath || '');

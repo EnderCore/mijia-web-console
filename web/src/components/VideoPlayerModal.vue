@@ -10,6 +10,28 @@
         </div>
 
         <div class="header-controls">
+          <!-- 字幕选择：来自 NAS player/subtitle_get_list，空列表时隐藏 -->
+          <div v-if="subtitleList.length > 0" class="resolution-dropdown">
+            <button class="res-btn" @click="showSubMenu = !showSubMenu">
+              <span class="current-res">💬 {{ currentSubtitle ? currentSubtitle.name : '字幕' }}</span>
+              <span class="arrow">▼</span>
+            </button>
+            <div v-if="showSubMenu" class="res-menu">
+              <div
+                class="res-item" :class="{ active: !currentSubtitle }"
+                @click="selectSubtitle(null)"
+              ><span class="q-label">关闭字幕</span></div>
+              <div
+                v-for="(s, i) in subtitleList" :key="i"
+                class="res-item" :class="{ active: currentSubtitle === s }"
+                @click="selectSubtitle(s)"
+              >
+                <span class="q-label">{{ s.name || s.path?.split('/').pop() || '字幕 ' + (i+1) }}</span>
+                <span class="q-badge">{{ s.type || s.language || '' }}</span>
+              </div>
+            </div>
+          </div>
+
           <!-- 分辨率切换器：档位来自 NAS 转码接口，取不到时只保留原画 -->
           <div class="resolution-dropdown">
             <button class="res-btn" @click="showResMenu = !showResMenu">
@@ -85,9 +107,49 @@ const emit = defineEmits(['close']);
 const videoEl = ref(null);
 let player = null;
 const showResMenu = ref(false);
+const showSubMenu = ref(false);
 const transcodingNotice = ref('');
 const resolutionError = ref('');
+const subtitleList = ref([]);
+const currentSubtitle = ref(null);
 let taskId = null;
+
+// 拉取该视频的外挂字幕列表（player/subtitle_get_list，参数是 video_path）
+async function loadSubtitles() {
+  const p = props.video?.path;
+  if (!p) return;
+  try {
+    const res = await fetch('/api/query?ep=player/subtitle_get_list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_path: p }),
+    });
+    const data = await res.json();
+    subtitleList.value = Array.isArray(data?.data?.subtitle_list) ? data.data.subtitle_list : [];
+  } catch (e) {
+    subtitleList.value = [];
+  }
+}
+
+// 选中字幕后以 <track> 形式挂到 video 元素；字幕文件经 WebDAV 走 /api/stream
+function selectSubtitle(s) {
+  currentSubtitle.value = s;
+  showSubMenu.value = false;
+  const el = videoEl.value;
+  if (!el) return;
+  // 清掉旧 track
+  for (const t of Array.from(el.querySelectorAll('track'))) t.remove();
+  if (!s) return;
+  const subPath = s.path || s.subtitle_path || '';
+  if (!subPath) return;
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.label = s.name || subPath.split('/').pop();
+  track.srclang = s.language || 'zh';
+  track.src = `/api/stream?path=${encodeURIComponent(subPath)}`;
+  track.default = true;
+  el.appendChild(track);
+}
 
 // 分辨率档位。原画始终可用（直接走 /api/stream 的 206 流），
 // 其余档位只有 NAS 的 transcode_get_resolution 真的返回了对应清晰度才加进来——
@@ -219,6 +281,7 @@ async function initPlayer() {
   });
 
   await loadResolutions();
+  loadSubtitles();
 }
 
 function handleClose() {

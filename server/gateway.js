@@ -1298,6 +1298,94 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 9.4 只读查询转发组（第三轮探测已验证的接口与参数形状）
+  //
+  // 全部经 POST 透传到 /cgi-bin/luci/<module>/<endpoint>。
+  // 这里只接收已确认是「查询」的接口；任何会写 NAS 状态的接口都不在此列。
+  //
+  // 已验证参数形状（实机探测 2026-09-20）：
+  //   filemgr/get_detail_info   { path: ["/abs/path", ...] }   ← path 必须是数组
+  //   filemgr/get_open_history  {}                              → data.files[]
+  //   filemgr/get_search_history{}                              → data.history[] / top-level history[]
+  //   filemgr/get_shared_list   { myshare:true, share2me:true } → data.files[]
+  //   album/list_album          {}                              → data.albums[]
+  //   album/info_album          { uuid:"<album_uuid>" }         → data.album
+  //   album/list_member         { uuid, offset?, count? }       → data.photos[]
+  //   player/subtitle_get_list  { video_path:"/abs/path" }      → data.subtitle_list[]
+  //   player/subtitle_search_online { keyword, video_path }     → data.subtitle_list[]
+  //   system/get_feature        {}                              → data.<module>.features
+  //   system/get_power_status   {}                              → data.power
+  //   system/get_upgrade_status {}                              → data.progress/state
+  //   system/get_upgrade_history{}                              → data.history[]
+  //   netshare/get_samba_info   {}                              → data.name/SMBv1/ip
+  //   netshare/get_samba_account{}                              → data.account[]
+  //   safebox/get_safebox_info  {}                              → data（保险箱状态）
+  //   mediacenter/media_recently_watched {}                     → data
+  //
+  // 已验证不可用的（不再转发，见 docs/unimplemented-features.md 第三节）：
+  //   filemgr/get_trashes 固定返回 5000；get_trashbins 空数据 —— 本机回收站功能不可达
+  //   ipcmgr/list_record_camera 5000（dbus 失败）；mediacenter/file_list 2200
+  if (pathname === "/api/query") {
+    try {
+      await ensureReady();
+      const endpoint = parsedUrl.searchParams.get("ep") || "";
+      // 只放已验证为只读的白名单，防止任意 LuCI 路径被转发成写操作
+      const ALLOWED = new Set([
+        "filemgr/get_detail_info",
+        "filemgr/get_open_history",
+        "filemgr/get_search_history",
+        "filemgr/get_shared_list",
+        "filemgr/get_shared_user",
+        "filemgr/get_ocr",
+        "album/list_album",
+        "album/info_album",
+        "album/list_member",
+        "album/info_photo",
+        "player/subtitle_get_list",
+        "player/subtitle_search_online",
+        "system/get_feature",
+        "system/get_power_status",
+        "system/get_upgrade_status",
+        "system/get_upgrade_check",
+        "system/get_upgrade_history",
+        "netshare/get_samba_info",
+        "netshare/get_samba_account",
+        "safebox/get_safebox_info",
+        "mediacenter/media_recently_watched",
+        "mediacenter/media_recommend",
+      ]);
+      if (!ALLOWED.has(endpoint)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: "endpoint not allowed" }));
+        return;
+      }
+
+      // 读取前端 POST 来的 JSON body，原样透传
+      let bodyRaw = "";
+      for await (const chunk of req) bodyRaw += chunk;
+      let body = {};
+      try { body = bodyRaw ? JSON.parse(bodyRaw) : {}; } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: "invalid JSON body" }));
+        return;
+      }
+
+      const r = await callNasAPI(`/cgi-bin/luci/${endpoint}`, body);
+      const upstream = r.data || {};
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: upstream.code === 0 ? "ok" : "error",
+        code: upstream.code,
+        result: upstream.result,
+        data: upstream.data ?? null,
+      }));
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
   // 9.5 /plugin/* 代理 NAS 插件页面（影视墙等）
   //
   // 官方客户端的做法（index-DM3JDHLo.js 的 getPluginURL）：把插件 URL 里的

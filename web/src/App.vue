@@ -99,6 +99,8 @@
       @preview-photo="handlePreviewMedia"
       @preview-doc="handlePreviewDoc"
       @refresh="loadAllData"
+      @file-detail="openFileDetail"
+      @open-history="openRecentHistory"
     />
 
     <!-- 专业 Video.js 播放器弹窗 (支持清晰度与多分辨率自由切换) -->
@@ -138,12 +140,79 @@
             </div>
           </div>
 
-          <!-- 系统设置视图 -->
+          <!-- 系统设置视图：能力开关 + 电源/升级/SMB 真实只读数据 -->
           <div v-else-if="activeDialog.type === 'settings'" class="settings-view">
+            <div class="set-row"><span>电源状态</span><b>{{ sysExtra.power || '未上报' }}</b></div>
+            <div class="set-row"><span>固件版本</span><b>{{ systemHardwareInfo.system?.version || '未上报' }}</b></div>
+            <div class="set-row"><span>升级状态</span><b>{{ upgradeText }}</b></div>
+            <div class="set-row"><span>SMB 服务名</span><b>{{ sysExtra.sambaName || '未上报' }}</b></div>
+            <div class="set-row"><span>SMBv1 兼容</span><b>{{ sysExtra.sambaV1 == null ? '未上报' : (sysExtra.sambaV1 ? '已开启' : '已关闭') }}</b></div>
+            <div class="set-row"><span>风扇调速接口</span><b>{{ featureEnabled('mifan','fan_mode') ? '支持' : '本机不支持 (fan_mode:0)' }}</b></div>
+            <div class="set-row"><span>迅雷插件</span><b>{{ featureEnabled('plugincenter','plugin_xunlei') ? '已启用' : '未启用' }}</b></div>
             <p class="unavailable-note">
-              官方 LuCI 未开放风扇策略 / Samba / 休眠策略的读写接口，网页版无法读取或修改这些设置。
+              以上为 NAS 只读查询结果；风扇策略 / SMB / 休眠的修改接口按当前约束未接入，
               请使用小米智能存储官方客户端进行配置。
             </p>
+          </div>
+
+          <!-- 相册视图：真实 album/list_album + list_member -->
+          <div v-else-if="activeDialog.type === 'album'" class="album-view">
+            <div class="album-head">
+              <div class="album-list">
+                <button
+                  v-for="a in albumList" :key="a.album_uuid"
+                  class="album-item" :class="{ active: activeAlbum === a.album_uuid }"
+                  @click="selectAlbum(a)"
+                >
+                  <span class="a-name">{{ albumDisplayName(a) }}</span>
+                  <span class="a-count">{{ a.photo_count + a.video_count }} 项</span>
+                </button>
+              </div>
+              <div class="album-photos">
+                <p v-if="albumLoading" class="task-empty">加载中…</p>
+                <p v-else-if="albumError" class="task-empty">{{ albumError }}</p>
+                <p v-else-if="albumPhotos.length === 0" class="task-empty">该相册暂无内容</p>
+                <div v-else class="album-grid">
+                  <div v-for="p in albumPhotos" :key="p.member_id" class="aph" @click="openAlbumPhoto(p)">
+                    <img :src="`/api/thumbnail?path=${encodeURIComponent(p.path)}&size=small`" :alt="p.name" loading="lazy" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 最近打开历史视图 -->
+          <div v-else-if="activeDialog.type === 'openHistory'" class="task-view">
+            <p v-if="histLoading" class="task-empty">加载中…</p>
+            <p v-else-if="openHistory.length === 0" class="task-empty">暂无最近打开记录</p>
+            <div v-else class="task-list">
+              <div v-for="(h, i) in openHistory" :key="i" class="task-card hist-card" @click="openHistoryFile(h)">
+                <div class="t-top">
+                  <span class="t-name" :title="h.parent + '/' + h.name">{{ h.name }}</span>
+                  <span class="t-status text-muted">{{ formatDate(h.access_time) }}</span>
+                </div>
+                <div class="t-bot">
+                  <span>{{ mask(h.parent, 'path') }}</span>
+                  <span>{{ formatSize(h.size) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文件详情视图 -->
+          <div v-else-if="activeDialog.type === 'fileDetail'" class="task-view">
+            <div v-if="detailInfo" class="detail-grid">
+              <div class="d-row"><span>文件名</span><b>{{ detailInfo.name }}</b></div>
+              <div class="d-row"><span>类型</span><b>{{ detailInfo.type || '文件' }}</b></div>
+              <div class="d-row"><span>大小</span><b>{{ formatSize(detailInfo.size) }}</b></div>
+              <div class="d-row"><span>修改时间</span><b>{{ formatDate(detailInfo.modified_time) }}</b></div>
+              <div class="d-row"><span>创建时间</span><b>{{ formatDate(detailInfo.create_time) }}</b></div>
+              <div class="d-row"><span>访问时间</span><b>{{ formatDate(detailInfo.access_time) }}</b></div>
+              <div class="d-row" v-if="detailInfo.pixel"><span>分辨率</span><b>{{ detailInfo.pixel }}</b></div>
+              <div class="d-row" v-if="detailInfo.owner"><span>所有者</span><b>{{ mask(detailInfo.owner, 'uid') }}</b></div>
+              <div class="d-row"><span>路径</span><b class="d-path">{{ mask(detailInfo.path, 'path') }}</b></div>
+            </div>
+            <p v-else class="task-empty">未获取到详情</p>
           </div>
 
           <!-- 任务中心视图：真实进度与速率，来自 taskcenter/get_taskinfo -->
@@ -312,6 +381,118 @@ const monitorData = ref({
 const appsList = ref([]);
 const recentFiles = ref([]);
 
+// ===== 只读扩展数据（/api/query 白名单转发）=====
+// features: system/get_feature 返回的模块能力开关；sysExtra: 电源/SMB 等杂项
+const features = ref({});
+const sysExtra = ref({ power: '', sambaName: '', sambaV1: null });
+const upgradeState = ref({ state: '', progress: null });
+
+// 相册视图状态
+const albumList = ref([]);
+const albumPhotos = ref([]);
+const activeAlbum = ref('');
+const albumLoading = ref(false);
+const albumError = ref('');
+
+// 统一调 /api/query 的便捷函数；body 直接透传给对应 LuCI 接口
+async function nasQuery(endpoint, body = {}) {
+  const res = await fetch(`/api/query?ep=${encodeURIComponent(endpoint)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+function featureEnabled(module, key) {
+  const f = features.value?.[module]?.features?.[key];
+  return f ? (f.enable === 1 || f.enable === true || f.value > 0) : false;
+}
+
+const upgradeText = computed(() => {
+  const s = upgradeState.value;
+  if (s.progress == null && !s.state) return '未上报';
+  if (s.state === 'fail' || s.progress === 0) return '无进行中升级';
+  return `${s.state || '进行中'} ${s.progress ?? ''}%`;
+});
+
+const ALBUM_NAME_MAP = {
+  all: '全部照片', favor: '收藏', screenshot: '截图', video: '视频',
+};
+function albumDisplayName(a) {
+  return ALBUM_NAME_MAP[a.name] || a.name || `相册 ${a.album_uuid}`;
+}
+
+async function openAlbum() {
+  albumLoading.value = true;
+  albumError.value = '';
+  try {
+    const r = await nasQuery('album/list_album');
+    const albums = r?.data?.albums || [];
+    albumList.value = albums;
+    if (albums.length > 0) selectAlbum(albums[0]);
+    else albumError.value = 'NAS 未返回相册列表';
+  } catch (e) {
+    albumError.value = '相册接口不可用: ' + e.message;
+  } finally {
+    albumLoading.value = false;
+  }
+}
+
+async function selectAlbum(a) {
+  activeAlbum.value = a.album_uuid;
+  albumLoading.value = true;
+  albumError.value = '';
+  try {
+    const r = await nasQuery('album/list_member', { uuid: a.album_uuid, count: 200 });
+    const photos = r?.data?.photos || [];
+    albumPhotos.value = photos.map(p => ({ ...p, name: (p.path || '').split('/').pop() }));
+    if (r.status === 'error') albumError.value = r.result || r.message || '照片列表查询失败';
+  } catch (e) {
+    albumError.value = '照片列表查询失败: ' + e.message;
+    albumPhotos.value = [];
+  } finally {
+    albumLoading.value = false;
+  }
+}
+
+function openAlbumPhoto(p) {
+  const isVideo = /\.(mp4|mkv|mov|avi|ts|flv|webm)$/i.test(p.path || '');
+  activeMedia.value = {
+    name: p.name,
+    path: p.path,
+    size: p.size,
+    type: isVideo ? 'video' : 'photo',
+    previewUrl: `/api/thumbnail?path=${encodeURIComponent(p.path)}&size=preview`,
+    videoUrl: isVideo ? `/api/stream?path=${encodeURIComponent(p.path)}` : '',
+  };
+}
+
+// 加载系统只读杂项（电源/SMB/能力开关/升级状态）
+async function loadSysExtras() {
+  try {
+    const [feat, power, upg, samba] = await Promise.allSettled([
+      nasQuery('system/get_feature'),
+      nasQuery('system/get_power_status'),
+      nasQuery('system/get_upgrade_status'),
+      nasQuery('netshare/get_samba_info'),
+    ]);
+    if (feat.status === 'fulfilled' && feat.value?.data) features.value = feat.value.data;
+    if (power.status === 'fulfilled') sysExtra.value.power = power.value?.data?.power || '';
+    if (upg.status === 'fulfilled') {
+      const d = upg.value?.data || {};
+      upgradeState.value = { state: d.state || '', progress: d.progress ?? null };
+    }
+    if (samba.status === 'fulfilled') {
+      const d = samba.value?.data || {};
+      sysExtra.value.sambaName = d.name || '';
+      sysExtra.value.sambaV1 = d.SMBv1 ?? null;
+    }
+  } catch (e) {
+    // 任一失败只让对应字段保持空，前端显示"未上报"
+  }
+}
+
 // 影视墙地址：由网关从 get_app_list 取真实插件 URL 并代理（带 token），
 // 不再拼硬编码的 webPort 路径 —— 官方实际走的是 urlport 且必须带 token。
 const mediaCenterUrl = ref('');
@@ -410,6 +591,9 @@ async function loadAllData() {
         tunnel: monitorRes.tunnel
       };
     }
+
+    // 7. 系统只读杂项（能力开关/电源/SMB/升级状态），失败不阻塞主流程
+    loadSysExtras();
   } finally {
     refreshing.value = false;
   }
@@ -479,6 +663,76 @@ function taskStatusClass(s) {
   return 'text-muted';
 }
 
+// ===== 最近打开历史 & 文件详情（/api/query 只读转发）=====
+const openHistory = ref([]);
+const histLoading = ref(false);
+const detailInfo = ref(null);
+
+function formatDate(ts) {
+  if (!ts) return '未上报';
+  const n = parseInt(ts, 10);
+  // NAS 返回的 access_time/modified_time 部分是毫秒时间戳、部分是微秒；
+  // 超过 1e14 视为微秒再除 1000
+  const ms = n > 1e14 ? n / 1000 : n;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '未上报';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+async function openRecentHistory() {
+  activeDialog.value = {
+    title: '最近打开',
+    icon: '🕐',
+    type: 'openHistory',
+    desc: '来自 NAS filemgr/get_open_history 接口的最近访问记录'
+  };
+  histLoading.value = true;
+  try {
+    const r = await nasQuery('filemgr/get_open_history');
+    openHistory.value = r?.data?.files || [];
+  } catch (e) {
+    openHistory.value = [];
+  } finally {
+    histLoading.value = false;
+  }
+}
+
+function openHistoryFile(h) {
+  const full = h.parent ? `${h.parent}/${h.name}` : (h.path || h.name);
+  const isVideo = /\.(mp4|mkv|mov|avi|ts|flv|webm)$/i.test(h.name || '');
+  const isPhoto = /\.(jpg|jpeg|png|heic|heif|webp|bmp|gif)$/i.test(h.name || '');
+  if (isVideo) {
+    handlePlayVideo({ name: h.name, path: full, size: h.size, type: 'video' });
+  } else if (isPhoto) {
+    activeMedia.value = {
+      name: h.name, path: full, size: h.size, type: 'photo',
+      previewUrl: `/api/thumbnail?path=${encodeURIComponent(full)}&size=preview`,
+    };
+  } else {
+    handlePreviewDoc({ name: h.name, path: full, size: h.size, type: 'doc' });
+  }
+}
+
+async function openFileDetail(file) {
+  detailInfo.value = null;
+  activeDialog.value = {
+    title: '文件详情',
+    icon: 'ℹ️',
+    type: 'fileDetail',
+    desc: '来自 NAS filemgr/get_detail_info 接口',
+  };
+  try {
+    const r = await nasQuery('filemgr/get_detail_info', { path: [file.path] });
+    const info = r?.data?.info || {};
+    detailInfo.value = { ...info, type: r?.data?.type || '' };
+    if (r.status === 'error' && !detailInfo.value.name) {
+      detailInfo.value = { name: file.name, path: file.path, size: file.size, modified_time: file.modified_time };
+    }
+  } catch (e) {
+    detailInfo.value = { name: file.name, path: file.path, size: file.size, modified_time: file.modified_time };
+  }
+}
+
 // 打开影视墙：先向网关要真实的插件代理地址（官方 URL 带 token，不能直接拼）
 async function openMediaCenter() {
   try {
@@ -502,17 +756,12 @@ function handleLaunchApp(app) {
     openMediaCenter();
   } else if (app.name === '相册') {
     activeDialog.value = {
-      title: 'AI 智能相册 (NAS 实际照片流)',
+      title: 'AI 智能相册',
       icon: '🖼️',
-      desc: '直接索引 NAS 真实存储卷中的照片与媒体文件',
-      items: recentFiles.value
-        .filter(f => f.type === 'photo' || f.name.includes('.png') || f.name.includes('.jpg') || f.name.includes('.heic'))
-        .map(f => ({
-          name: f.name,
-          sub: `${mask(f.parent || statusInfo.value.dataRoot, 'path')} · 照片`,
-          detail: formatSize(f.size)
-        }))
+      type: 'album',
+      desc: '真实相册数据来自 NAS album 接口（list_album / list_member）'
     };
+    openAlbum();
   } else if (app.name === '文件') {
     showFileExplorer.value = true;
   } else if (app.name === '用户管理') {
@@ -545,7 +794,23 @@ function handleLaunchApp(app) {
     activeDialog.value = {
       title: '加密保险箱',
       icon: '🔐',
-      desc: '官方 LuCI 未开放保险箱索引接口，网页版无法列出其中的加密文件。',
+      desc: '官方 LuCI 未开放保险箱文件索引接口，网页版无法列出其中的加密文件。',
+      items: []
+    };
+    // 顺带查一次保险箱状态（只读），有内容就显示出来
+    nasQuery('safebox/get_safebox_info').then(r => {
+      const d = r?.data;
+      if (d && activeDialog.value?.type !== 'task') {
+        activeDialog.value.items = [
+          { name: '保险箱状态', sub: 'safebox/get_safebox_info', detail: JSON.stringify(d).slice(0, 80) }
+        ];
+      }
+    }).catch(() => {});
+  } else if (app.name === '回收站') {
+    activeDialog.value = {
+      title: '回收站',
+      icon: '🗑️',
+      desc: 'NAS 的 filemgr/get_trashes 在本机固件上固定返回 5000（接口未开放），网页版无法浏览回收站。',
       items: []
     };
   } else {
@@ -839,6 +1104,97 @@ onUnmounted(() => {
 }
 
 /* 系统设置与任务中心特殊卡片 */
+.set-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: var(--mi-radius-md);
+  margin-bottom: 8px;
+  border: 1px solid var(--mi-border);
+  font-size: 13px;
+}
+
+.set-row span { color: var(--mi-text-sub); }
+.set-row b { color: var(--mi-text-main); font-weight: 600; }
+
+/* 相册视图 */
+.album-head {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 16px;
+  max-height: 50vh;
+}
+
+.album-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.album-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--mi-border);
+  font-size: 12px;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.album-item:hover { background: #f1f5f9; }
+.album-item.active { background: #fff7ed; border-color: var(--mi-orange); color: var(--mi-orange); font-weight: 600; }
+
+.album-item .a-name { font-weight: 600; }
+.album-item .a-count { font-size: 10px; color: #94a3b8; }
+
+.album-photos { overflow-y: auto; max-height: 50vh; }
+
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.aph {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f1f5f9;
+  cursor: pointer;
+  border: 1px solid var(--mi-border);
+}
+
+.aph img { width: 100%; height: 100%; object-fit: cover; }
+.aph:hover { border-color: var(--mi-orange); }
+
+/* 文件详情 */
+.detail-grid { display: flex; flex-direction: column; gap: 8px; }
+
+.d-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: var(--mi-radius-md);
+  border: 1px solid var(--mi-border);
+  font-size: 13px;
+}
+
+.d-row span { color: var(--mi-text-sub); flex-shrink: 0; }
+.d-row b { color: var(--mi-text-main); font-weight: 600; text-align: right; word-break: break-all; }
+.d-path { font-family: monospace; font-size: 11px; }
+
+.hist-card { cursor: pointer; }
+.hist-card:hover { border-color: var(--mi-orange); }
+
 .setting-row {
   display: flex;
   justify-content: space-between;
