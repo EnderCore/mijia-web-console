@@ -437,13 +437,16 @@ async function fetchSubdirs(dirPath) {
   return [];
 }
 
-// 增量构建/对齐当前路径的多级分栏链 (彻底解决中文路径匹配失效与树消失问题)
-async function syncMillerColumns(targetPath) {
+// 增量构建/对齐当前路径的多级分栏链 (0 毫秒秒级呈现，绝不串行等待)
+function syncMillerColumns(targetPath) {
   if (!ROOT_PATH.value) return;
   const root = cleanPath(ROOT_PATH.value);
   const target = cleanPath(targetPath) || root;
 
-  // 1. 计算当前目标路径应当拥有的分栏路径数组
+  // 1. 获取已缓存的根目录子项
+  let rootItems = columnCache.get(root) || [];
+
+  // 2. 快速计算当前路径的分栏链条
   const expectedPaths = [root];
   if (target.startsWith(root) && target !== root) {
     const rel = target.slice(root.length);
@@ -455,61 +458,46 @@ async function syncMillerColumns(targetPath) {
     }
   }
 
-  // 2. 差异化比对与增量复用：找出当前已有分栏中与期望路径完全重合的最长前缀
-  const existing = columnChain.value;
-  let commonPrefixLen = 0;
-  while (
-    commonPrefixLen < existing.length &&
-    commonPrefixLen < expectedPaths.length &&
-    cleanPath(existing[commonPrefixLen].path) === expectedPaths[commonPrefixLen]
-  ) {
-    commonPrefixLen++;
-  }
-
-  // 截断不匹配的多余后序分栏，保留已经渲染好的前序分栏
-  const newChain = existing.slice(0, commonPrefixLen);
-
-  // 补齐缺失的新分栏
-  for (let i = commonPrefixLen; i < expectedPaths.length; i++) {
+  // 3. 0毫秒同步构造各栏数据（直接复用缓存，没有缓存的先展示 loading 骨架，绝不阻塞 UI！）
+  const builtCols = [];
+  for (let i = 0; i < expectedPaths.length; i++) {
     const p = expectedPaths[i];
     const name = p === root ? '存储空间' : p.split('/').pop();
     const isCached = columnCache.has(p);
-    newChain.push({
+    const items = isCached ? columnCache.get(p) : (i === 0 ? rootItems : []);
+    
+    const nextPath = expectedPaths[i + 1] || target;
+    const mappedItems = items.map(it => ({
+      ...it,
+      selected: cleanPath(it.path) === nextPath
+    }));
+
+    builtCols.push({
       name,
       path: p,
-      loading: !isCached,
-      items: isCached ? columnCache.get(p) : []
+      loading: !isCached && i > 0,
+      items: mappedItems
     });
   }
 
-  // 3. 原地更新选中高亮状态
-  newChain.forEach((col, idx) => {
-    const nextCol = newChain[idx + 1];
-    const targetSelectedPath = nextCol ? nextCol.path : target;
-    col.items.forEach(item => {
-      item.selected = (cleanPath(item.path) === targetSelectedPath);
-    });
-  });
+  // 立即呈现分栏框架！
+  columnChain.value = builtCols;
 
-  columnChain.value = newChain;
-
-  // 4. 仅对尚未缓存的新分栏发起异步静默拉取
-  await Promise.all(newChain.map(async (col, idx) => {
+  // 4. 后台静默预取尚未缓存的栏目（如果尚未被 loadFolder 填充的话）
+  builtCols.forEach(async (col, idx) => {
     const p = cleanPath(col.path);
     if (!columnCache.has(p)) {
-      col.loading = true;
       const dirs = await fetchSubdirs(p);
-      const nextCol = newChain[idx + 1];
-      const targetSelectedPath = nextCol ? cleanPath(nextCol.path) : target;
+      const nextPath = expectedPaths[idx + 1] || target;
       col.items = dirs.map(d => ({
         ...d,
-        selected: cleanPath(d.path) === targetSelectedPath
+        selected: cleanPath(d.path) === nextPath
       }));
       col.loading = false;
     }
-  }));
+  });
 
-  // 5. 平滑滚动到最右侧最新分栏
+  // 5. 平滑滚动到最右侧
   setTimeout(() => {
     if (millerScrollRef.value) {
       millerScrollRef.value.scrollTo({
@@ -517,7 +505,7 @@ async function syncMillerColumns(targetPath) {
         behavior: 'smooth'
       });
     }
-  }, 50);
+  }, 30);
 }
 
 // 分栏项点击处理
@@ -721,7 +709,7 @@ async function fetchRootFiles() {
   }
 }
 
-// 加载指定目录下的子文件
+// 核心优化：数据通道归一化！loadFolder 获取到数据后，同步喂饱上方分栏缓存！
 async function loadFolder(targetPath) {
   const normPath = cleanPath(targetPath);
   loadingFolder.value = true;
@@ -731,6 +719,19 @@ async function loadFolder(targetPath) {
     if (data.status === 'ok' && data.data?.files) {
       currentFolderFiles.value = data.data.files;
       currentPath.value = normPath;
+
+      // 提取当前目录内的子文件夹，顺手喂给 columnCache，上方分栏立刻 0ms 获取！
+      const subDirs = data.data.files
+        .filter(f => f.isDir || f.type === 'dir')
+        .map(d => ({ name: d.name, path: cleanPath(d.path), isDir: true }));
+      columnCache.set(normPath, subDirs);
+
+      // 如果分栏里有这一项，原地更新并取消转圈
+      const matchCol = columnChain.value.find(c => cleanPath(c.path) === normPath);
+      if (matchCol) {
+        matchCol.items = subDirs;
+        matchCol.loading = false;
+      }
     }
   } catch (e) {
     console.error('加载子文件夹失败:', e);
@@ -740,7 +741,7 @@ async function loadFolder(targetPath) {
   }
 }
 
-// 导航到指定路径并联动多级分栏与左侧目录树
+// 导航到指定路径并联动多级分栏与左侧目录树 (秒级同步)
 function navigateTo(targetPath) {
   const normTarget = cleanPath(targetPath);
   const normRoot = cleanPath(ROOT_PATH.value);
@@ -756,8 +757,12 @@ function navigateTo(targetPath) {
   }
   pathStack.value.push(normTarget);
   selectedTreePath.value = normTarget;
-  loadFolder(normTarget);
+
+  // 1. 同步骨架分栏瞬间呈现（0ms 搭建 UI）
   syncMillerColumns(normTarget);
+  // 2. 异步请求真实文件（拉取成功后自动喂饱上方分栏）
+  loadFolder(normTarget);
+  // 3. 展开左侧树
   autoExpandTreeToPath(normTarget);
 }
 
@@ -1516,6 +1521,9 @@ function handleFileClick(file) {
   border-radius: var(--mi-radius-md);
   margin-bottom: 16px;
   height: 220px;
+  min-height: 220px;
+  max-height: 220px;
+  flex-shrink: 0;
   overflow: hidden;
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.03);
 }
