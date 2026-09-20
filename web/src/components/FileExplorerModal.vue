@@ -271,6 +271,13 @@
             <div class="skeleton-text">正在快速读取 NAS 目录结构，请稍候...</div>
           </div>
 
+          <!-- 真正修复 Bug 1：子目录为空时，清晰显示空文件夹，绝不穿透回退到根目录文件 -->
+          <div v-else-if="currentPath !== ROOT_PATH && displayFiles.length === 0" class="empty-folder-box">
+            <span class="empty-folder-icon">📂</span>
+            <h4>此文件夹为空</h4>
+            <p>未在该文件夹下检索到任何子文件或媒体</p>
+          </div>
+
           <!-- 网格卡片视图 -->
           <div v-else-if="viewMode === 'grid'" class="files-grid">
             <div
@@ -817,7 +824,7 @@ async function deleteFile(file) {
   }
 }
 
-// 监听弹窗显示，恢复根目录并初始化目录树与多级分栏
+// 监听弹窗显示，恢复根目录并初始化目录树与多级分栏（只在初次或根路径变化时初始化一次，避免每次重拉）
 watch(() => props.visible, (val) => {
   if (val) {
     currentPath.value = ROOT_PATH.value;
@@ -825,25 +832,32 @@ watch(() => props.visible, (val) => {
     currentFolderFiles.value = [];
     selectedTreePath.value = '';
     syncMillerColumns(ROOT_PATH.value);
+    // 关键优化：目录树只拉一次，绝不重复刷新！
+    if (folderTree.value.length === 0 && ROOT_PATH.value) {
+      refreshTree();
+    }
+  }
+});
+
+// 根路径来自网关，异步到达时初始化一次目录树
+watch(() => props.rootPath, (val) => {
+  if (val) {
+    if (currentPath.value === '' || currentPath.value === val) {
+      currentPath.value = val;
+      pathStack.value = [val];
+      syncMillerColumns(val);
+    }
+    // 只要树还没有被加载，就仅加载一次
     if (folderTree.value.length === 0) {
       refreshTree();
     }
   }
 });
 
-// 根路径来自网关，可能晚于弹窗打开才能拿到，需同步一次
-watch(() => props.rootPath, (val) => {
-  if (val && currentFolderFiles.value.length === 0) {
-    currentPath.value = val;
-    pathStack.value = [val];
-    syncMillerColumns(val);
-    refreshTree();
-  }
-});
-
 const displayFiles = computed(() => {
-  // 如果在子文件夹内，优先显示子文件夹内容；在根目录时显示 props.files
-  let list = (currentPath.value !== ROOT_PATH.value && currentFolderFiles.value.length > 0)
+  // 彻底修复 Bug 1：如果进入了子目录（currentPath !== ROOT_PATH），
+  // 当前目录即使文件数为 0 也严格取子目录结果，绝不使用 props.files 冒充！
+  let list = (currentPath.value !== ROOT_PATH.value)
     ? currentFolderFiles.value
     : props.files;
 
@@ -858,7 +872,7 @@ const displayFiles = computed(() => {
 });
 
 function getCategoryCount(key) {
-  const list = (currentPath.value !== ROOT_PATH.value && currentFolderFiles.value.length > 0)
+  const list = (currentPath.value !== ROOT_PATH.value)
     ? currentFolderFiles.value
     : props.files;
   if (key === 'all') return list.length;
@@ -1534,6 +1548,32 @@ function handleFileClick(file) {
   color: #94a3b8;
   text-align: center;
   padding: 30px 0;
+}
+
+/* 真正的空文件夹提示面板 */
+.empty-folder-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  gap: 10px;
+}
+
+.empty-folder-icon {
+  font-size: 48px;
+  opacity: 0.6;
+}
+
+.empty-folder-box h4 {
+  font-size: 16px;
+  color: var(--mi-text-main);
+  font-weight: 600;
+}
+
+.empty-folder-box p {
+  font-size: 12px;
+  color: var(--mi-text-sub);
 }
 
 .crumb-menu-item {
