@@ -662,7 +662,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  // 兼容内网穿透、局域网 IP 与无 Host 头的 HTTP 请求
+  const hostHeader = req.headers.host || `127.0.0.1:${SERVER_PORT}`;
+  const parsedUrl = new URL(req.url, `http://${hostHeader}`);
   const pathname = parsedUrl.pathname;
 
   // 1. /api/status 设备状态与穿透握手
@@ -1742,9 +1744,11 @@ server.on("error", (e) => {
   process.exit(1);
 });
 
-server.listen(SERVER_PORT, "127.0.0.1", async () => {
+server.listen(SERVER_PORT, "0.0.0.0", async () => {
   console.log("=======================================================");
-  console.log(`[√] 米家 Web 控制台中继服务已就绪: http://127.0.0.1:${SERVER_PORT}`);
+  console.log(`[√] 米家 Web 控制台中继服务已就绪:`);
+  console.log(`    - 本地访问:    http://127.0.0.1:${SERVER_PORT}`);
+  console.log(`    - 局域网/穿透: http://0.0.0.0:${SERVER_PORT}`);
   console.log(`[√] 本地多级磁盘缓存系统已挂载: ${CACHE_DIR}`);
   console.log("正在尝试与远端 NAS 隧道建立会话连接...");
   try {
