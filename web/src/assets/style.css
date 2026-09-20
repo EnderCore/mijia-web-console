@@ -49,52 +49,127 @@ html.dark body {
   color: #f1f5f9 !important;
 }
 
-/* 强制暗化所有卡片、容器与弹窗 */
+/* 强制暗化所有卡片、容器、文件管理器、弹窗与各级列表项 (全域穿透覆盖) */
 html.dark .top-header,
 html.dark .app-footer,
 html.dark .custom-modal,
+html.dark .modal-hdr,
+html.dark .modal-cnt,
 html.dark .explorer-modal,
-html.dark .modal-backdrop,
-html.dark .storage-card,
-html.dark .chart-card,
-html.dark .grid-card,
-html.dark .recent-card,
-html.dark .file-card,
-html.dark .media-item,
-html.dark .app-item,
-html.dark .column-box,
+html.dark .explorer-header,
+html.dark .sidebar-tree,
+html.dark .miller-columns-container,
+html.dark .miller-column,
+html.dark .column-header,
 html.dark .column-item,
+html.dark .tree-node-item,
+html.dark .tree-item,
+html.dark .crumb-dropdown-menu,
+html.dark .mount-box,
 html.dark .files-table-box,
-html.dark .tree-box,
-html.dark .files-table tr,
-html.dark .section-box,
+html.dark .files-table th,
+html.dark .files-table td,
+html.dark .table-row,
+html.dark .file-card,
+html.dark .card-preview,
+html.dark .view-toggle,
+html.dark .search-box,
+html.dark .action-pill,
+html.dark .miller-toggle-btn,
+html.dark .row-op,
+html.dark .ca-btn,
+html.dark .up-btn,
+html.dark .modal-list-item,
 html.dark .set-row,
-html.dark .detail-item,
-html.dark .hw-item,
-html.dark .disk-item,
+html.dark .album-item,
+html.dark .aph,
+html.dark .d-row,
+html.dark .setting-row,
+html.dark .task-view,
+html.dark .task-card,
+html.dark .task-tab,
+html.dark .task-refresh,
+html.dark .task-summary,
+html.dark .section-box,
 html.dark .preset-card,
 html.dark .scope-option,
 html.dark .mode-btn,
 html.dark .io-btn,
-html.dark .action-btn {
+html.dark .action-btn,
+html.dark .upload-bar,
+html.dark .viewer-box,
+html.dark .doc-viewer-modal,
+html.dark .doc-sidebar,
+html.dark .doc-content {
   background-color: var(--mi-card-bg) !important;
   border-color: var(--mi-border) !important;
   color: var(--mi-text-main) !important;
 }
 
+/* 次级容器与凹槽暗色底 */
+html.dark .sidebar-tree,
+html.dark .miller-columns-container,
+html.dark .column-header,
+html.dark .files-table th,
 html.dark .section-box,
-html.dark .column-box,
-html.dark .tree-box,
+html.dark .modal-list-item,
 html.dark .set-row,
-html.dark .detail-item,
-html.dark .hw-item,
-html.dark .disk-item,
+html.dark .album-item,
+html.dark .d-row,
+html.dark .setting-row,
+html.dark .task-view,
+html.dark .task-summary,
+html.dark .card-preview,
+html.dark .view-toggle,
+html.dark .search-box,
+html.dark .action-pill,
+html.dark .miller-toggle-btn,
+html.dark .row-op,
+html.dark .ca-btn,
+html.dark .up-btn,
+html.dark .upload-bar,
+html.dark .mount-box,
 html.dark .scope-option,
 html.dark .preset-card,
 html.dark .mode-btn,
 html.dark .io-btn,
-html.dark .action-btn {
+html.dark .action-btn,
+html.dark .hw-item,
+html.dark .disk-row,
+html.dark .details-grid,
+html.dark .tunnel-info {
   background-color: var(--mi-card-sub-bg) !important;
+  border-color: var(--mi-border) !important;
+}
+
+/* 文本高对比度保护 */
+html.dark .tree-item,
+html.dark .tree-node-item,
+html.dark .column-item,
+html.dark .file-title,
+html.dark .item-title,
+html.dark .crumb-root,
+html.dark .crumb-seg,
+html.dark .crumb-seg-btn,
+html.dark .d-row b,
+html.dark .set-row b,
+html.dark .setting-row b,
+html.dark .upload-text,
+html.dark .search-input {
+  color: var(--mi-text-main) !important;
+}
+
+html.dark .tree-section-title,
+html.dark .ch-count,
+html.dark .file-info-row,
+html.dark .d-row span,
+html.dark .set-row span,
+html.dark .setting-row span,
+html.dark .mount-label,
+html.dark .file-summary,
+html.dark .node-arrow,
+html.dark .modal-desc {
+  color: var(--mi-text-sub) !important;
 }
 
 html.dark input,
@@ -105,25 +180,27 @@ html.dark textarea {
   color: var(--mi-text-main) !important;
 }
 
-html.dark .files-table th {
-  background-color: var(--mi-card-sub-bg) !important;
-  border-color: var(--mi-border) !important;
-  color: var(--mi-text-sub) !important;
-}
-
-html.dark .files-table td {
-  border-color: var(--mi-border) !important;
-}
-
+/* 悬停与激活状态暗色表现 */
 html.dark .table-row:hover,
 html.dark .column-item:hover,
-html.dark .tree-node:hover {
+html.dark .tree-node-item:hover,
+html.dark .tree-item:hover,
+html.dark .crumb-menu-item:hover,
+html.dark .crumb-seg-btn:hover,
+html.dark .row-op:hover,
+html.dark .ca-btn:hover,
+html.dark .up-btn:hover,
+html.dark .album-item:hover {
   background-color: var(--mi-control-sub-bg) !important;
+  color: var(--mi-text-main) !important;
 }
 
-html.dark .column-item.selected,
-html.dark .tree-node.selected {
-  background-color: rgba(255, 103, 0, 0.15) !important;
+html.dark .column-item.active,
+html.dark .tree-node-item.active,
+html.dark .tree-item.active,
+html.dark .album-item.active {
+  background-color: var(--mi-orange) !important;
+  color: #ffffff !important;
 }
 
 html.dark .load-more-btn {

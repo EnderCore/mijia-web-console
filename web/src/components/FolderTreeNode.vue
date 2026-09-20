@@ -54,16 +54,16 @@ defineEmits(['select-node', 'toggle-node']);
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
-  color: #334155;
+  color: var(--mi-text-main, #334155);
   transition: all 0.15s;
 }
 
 .tree-node-item:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg, #f1f5f9);
 }
 
 .tree-node-item.active {
-  background: #fff7ed;
+  background: rgba(255, 103, 0, 0.12);
   color: var(--mi-orange);
   font-weight: 600;
 }

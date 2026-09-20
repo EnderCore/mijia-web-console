@@ -1385,12 +1385,13 @@ onUnmounted(() => {
   width: 580px;
   max-width: 90vw;
   max-height: 85vh;
-  background: white;
+  background: var(--mi-card-bg, white);
   border-radius: var(--mi-radius-lg);
   display: flex;
   flex-direction: column;
   box-shadow: var(--mi-shadow-hover);
   overflow: hidden;
+  border: 1px solid var(--mi-border);
 }
 
 .modal-hdr {

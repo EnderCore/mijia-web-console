@@ -209,12 +209,13 @@ watch(() => props.visible, (val) => {
   width: 86vw;
   max-width: 1100px;
   height: 85vh;
-  background: #ffffff;
+  background: var(--mi-card-bg, #ffffff);
   border-radius: var(--mi-radius-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--mi-border);
 }
 
 .doc-header {
@@ -223,7 +224,7 @@ watch(() => props.visible, (val) => {
   align-items: center;
   padding: 14px 24px;
   border-bottom: 1px solid var(--mi-border);
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg, #f8fafc);
 }
 
 .doc-meta {
@@ -249,8 +250,8 @@ watch(() => props.visible, (val) => {
 
 .size-badge {
   font-size: 11px;
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--mi-control-sub-bg, #e2e8f0);
+  color: var(--mi-text-sub, #475569);
   padding: 2px 8px;
   border-radius: 6px;
   font-weight: 600;
@@ -267,19 +268,19 @@ watch(() => props.visible, (val) => {
   font-weight: 600;
   color: var(--mi-orange);
   text-decoration: none;
-  background: #fff7ed;
+  background: rgba(255, 103, 0, 0.1);
   padding: 5px 12px;
   border-radius: 6px;
   transition: all 0.15s;
 }
 
 .download-btn:hover {
-  background: #ffedd5;
+  background: rgba(255, 103, 0, 0.2);
 }
 
 .close-x {
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--mi-text-sub, #94a3b8);
   padding: 4px;
 }
 
@@ -290,7 +291,7 @@ watch(() => props.visible, (val) => {
 .doc-body {
   flex: 1;
   overflow: hidden;
-  background: #f1f5f9;
+  background: var(--mi-card-bg, #f1f5f9);
   display: flex;
 }
 
