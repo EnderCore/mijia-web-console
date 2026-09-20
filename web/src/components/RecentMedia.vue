@@ -3,24 +3,35 @@
     <div class="card-header">
       <div class="header-left">
         <span class="icon">📸</span>
-        <h3>最近照片与媒体流</h3>
+        <h3>最近媒体</h3>
       </div>
       <div class="header-right">
-        <span class="file-count">共 {{ filteredFiles.length }} 项</span>
+        <span class="file-count">显示 {{ pagedFiles.length }} / {{ filteredFiles.length }} 项</span>
       </div>
     </div>
 
-    <!-- 过滤器切换 (全部 / 照片 / 视频 / 文件夹) -->
+    <!-- 过滤器切换 (全部 / 照片 / 视频 / 文档) -->
     <div class="filter-tabs">
       <button
         v-for="t in tabs"
         :key="t.key"
         class="tab-btn"
         :class="{ active: currentTab === t.key }"
-        @click="currentTab = t.key"
+        @click="switchTab(t.key)"
       >
         {{ t.name }}
       </button>
+
+      <!-- 容量控制：单页条数切换 -->
+      <div class="limit-selector">
+        <span class="limit-label">显示</span>
+        <select v-model.number="pageSize" class="limit-select">
+          <option :value="12">12 项</option>
+          <option :value="24">24 项</option>
+          <option :value="48">48 项</option>
+          <option :value="filteredFiles.length">全部</option>
+        </select>
+      </div>
     </div>
 
     <div v-if="filteredFiles.length === 0" class="empty-state">
@@ -28,39 +39,53 @@
     </div>
 
     <!-- 媒体真实缩略图瀑布流 (真图片预览 + 视频时长播放标记) -->
-    <div v-else class="media-grid">
-      <div
-        v-for="file in filteredFiles"
-        :key="file.id || file.name"
-        class="media-item"
-        @click="$emit('preview-media', file)"
-      >
-        <div class="thumb-container">
-          <!-- 真实缩略图与本地缓存直显 -->
-          <img
-            :src="file.thumbnail"
-            :alt="file.name"
-            class="media-img"
-            loading="lazy"
-          />
+    <div v-else>
+      <div class="media-grid">
+        <div
+          v-for="file in pagedFiles"
+          :key="file.id || file.name"
+          class="media-item"
+          @click="$emit('preview-media', file)"
+        >
+          <div class="thumb-container">
+            <!-- 真实缩略图与本地缓存直显 -->
+            <img
+              :src="file.thumbnail"
+              :alt="file.name"
+              class="media-img"
+              loading="lazy"
+            />
 
-          <!-- 视频专用标识与时长播放按钮 -->
-          <div v-if="file.type === 'video'" class="video-overlay">
-            <span class="play-icon">▶</span>
-            <span v-if="file.duration" class="duration">{{ file.duration }}</span>
+            <!-- 视频专用标识与时长播放按钮 -->
+            <div v-if="file.type === 'video'" class="video-overlay">
+              <span class="play-icon">▶</span>
+              <span v-if="file.duration" class="duration">{{ file.duration }}</span>
+            </div>
+
+            <span v-if="file.dim" class="res-tag">{{ file.dim }}</span>
           </div>
 
-          <span v-if="file.dim" class="res-tag">{{ file.dim }}</span>
-        </div>
-
-        <div class="media-info">
-          <p class="file-name" :title="file.name">{{ file.name }}</p>
-          <div class="file-meta">
-            <span>{{ formatSize(file.size) }}</span>
-            <span>·</span>
-            <span>{{ formatDate(file.modified_time) }}</span>
+          <div class="media-info">
+            <p class="file-name" :title="file.name">{{ file.name }}</p>
+            <div class="file-meta">
+              <span>{{ formatSize(file.size) }}</span>
+              <span>·</span>
+              <span>{{ formatDate(file.modified_time) }}</span>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- 加载更多 / 翻到底提示 -->
+      <div class="more-row">
+        <button
+          v-if="hasMore"
+          class="load-more-btn"
+          @click="pageSize += 12"
+        >
+          加载更多 (还剩 {{ filteredFiles.length - pagedFiles.length }} 项) ↓
+        </button>
+        <span v-else-if="filteredFiles.length > 12" class="no-more">已显示全部项目</span>
       </div>
     </div>
   </div>
@@ -76,16 +101,31 @@ const props = defineProps({
 defineEmits(['preview-media']);
 
 const currentTab = ref('all');
+const pageSize = ref(12); // 默认只展示前 12 项，避免图片太多把页面拉得过长
 const tabs = [
   { key: 'all', name: '全部' },
   { key: 'photo', name: '照片' },
   { key: 'video', name: '视频' },
-  { key: 'doc', name: '文档与文件夹' }
+  { key: 'doc', name: '文档' }
 ];
+
+function switchTab(k) {
+  currentTab.value = k;
+  pageSize.value = 12; // 切类目时重置为 12
+}
 
 const filteredFiles = computed(() => {
   if (currentTab.value === 'all') return props.files;
   return props.files.filter(f => f.type === currentTab.value);
+});
+
+// 分页切片：只把前 pageSize 项交给模板渲染
+const pagedFiles = computed(() => {
+  return filteredFiles.value.slice(0, pageSize.value);
+});
+
+const hasMore = computed(() => {
+  return filteredFiles.value.length > pagedFiles.value.length;
 });
 
 function formatSize(bytes) {
@@ -170,6 +210,53 @@ function formatDate(timestamp) {
 .tab-btn.active {
   background: var(--mi-orange);
   color: white;
+}
+
+.limit-selector {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mi-text-sub);
+}
+
+.limit-select {
+  border: 1px solid var(--mi-border);
+  background: #ffffff;
+  color: var(--mi-text-main);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.more-row {
+  margin-top: 18px;
+  text-align: center;
+}
+
+.load-more-btn {
+  background: #f1f5f9;
+  color: var(--mi-orange);
+  border: 1px solid var(--mi-border);
+  border-radius: 20px;
+  padding: 8px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover {
+  background: #fff7ed;
+  border-color: var(--mi-orange);
+}
+
+.no-more {
+  font-size: 12px;
+  color: var(--mi-text-sub);
 }
 
 .media-grid {
