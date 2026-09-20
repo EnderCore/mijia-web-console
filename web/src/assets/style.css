@@ -188,6 +188,18 @@ html.dark .badge.uninstalled {
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
+html.dark .personal-tag {
+  background: rgba(14, 165, 233, 0.15) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(14, 165, 233, 0.3) !important;
+}
+
+html.dark .estim-tag {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
 /* 文本高对比度保护 */
 html.dark .tree-item,
 html.dark .tree-node-item,

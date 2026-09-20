@@ -398,9 +398,9 @@ function formatHours(h) {
   display: inline-block;
   margin-left: 6px;
   font-size: 10px;
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.25);
   border-radius: 8px;
   padding: 1px 6px;
 }
@@ -409,9 +409,9 @@ function formatHours(h) {
   display: inline-block;
   margin-left: 6px;
   font-size: 10px;
-  color: #0369a1;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.12);
+  border: 1px solid rgba(2, 132, 199, 0.25);
   border-radius: 8px;
   padding: 1px 6px;
 }
