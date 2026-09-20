@@ -70,15 +70,15 @@
 
       <!-- 主体区域：左侧目录树导航 + 右侧文件内容流 -->
       <div class="explorer-body">
-        <!-- 左侧快捷目录树 -->
+        <!-- 左侧快捷目录树与多级文件夹导航 -->
         <aside class="sidebar-tree">
-          <div class="tree-section-title">存储空间根目录</div>
+          <div class="tree-section-title">文件类型分类</div>
           <div 
             v-for="cat in categories" 
             :key="cat.key" 
             class="tree-item"
-            :class="{ active: activeCategory === cat.key }"
-            @click="activeCategory = cat.key"
+            :class="{ active: activeCategory === cat.key && !selectedTreePath }"
+            @click="selectCategory(cat.key)"
           >
             <span class="t-icon">{{ cat.icon }}</span>
             <span class="t-name">{{ cat.name }}</span>
@@ -86,12 +86,78 @@
           </div>
 
           <div class="tree-divider"></div>
-          <div class="tree-section-title">当前目录</div>
+          
+          <!-- 核心：交互式多级文件夹树 (Folder Directory Tree) -->
+          <div class="tree-header-row">
+            <span class="tree-section-title">存储空间目录树</span>
+            <button class="tree-refresh-btn" @click="refreshTree" title="刷新目录结构">🔄</button>
+          </div>
+
+          <div class="folder-tree-container">
+            <div 
+              class="tree-node-item root-node"
+              :class="{ active: currentPath === ROOT_PATH && !selectedTreePath }"
+              @click="navigateTo(ROOT_PATH)"
+            >
+              <span class="t-icon">🏠</span>
+              <span class="node-name">存储根目录</span>
+            </div>
+
+            <!-- 递归多级文件夹树 -->
+            <div class="tree-subnodes">
+              <div 
+                v-for="node in folderTree" 
+                :key="node.path"
+                class="tree-branch"
+              >
+                <div 
+                  class="tree-node-item"
+                  :class="{ active: currentPath === node.path }"
+                  :style="{ paddingLeft: (node.level * 14 + 10) + 'px' }"
+                  @click="handleTreeNodeClick(node)"
+                >
+                  <span 
+                    class="node-arrow" 
+                    :class="{ expanded: node.expanded, loading: node.loading }"
+                    @click.stop="toggleTreeNode(node)"
+                  >
+                    {{ node.loading ? '⏳' : (node.hasChildren !== false ? (node.expanded ? '▼' : '▶') : '·') }}
+                  </span>
+                  <span class="node-icon">📁</span>
+                  <span class="node-name" :title="node.name">{{ node.name }}</span>
+                </div>
+
+                <!-- 展开的二级子节点 -->
+                <div v-if="node.expanded && node.children && node.children.length" class="tree-children-box">
+                  <div 
+                    v-for="sub in node.children" 
+                    :key="sub.path"
+                    class="tree-node-item"
+                    :class="{ active: currentPath === sub.path }"
+                    :style="{ paddingLeft: ((node.level + 1) * 14 + 14) + 'px' }"
+                    @click="handleTreeNodeClick(sub)"
+                  >
+                    <span 
+                      class="node-arrow" 
+                      :class="{ expanded: sub.expanded, loading: sub.loading }"
+                      @click.stop="toggleTreeNode(sub)"
+                    >
+                      {{ sub.loading ? '⏳' : (sub.hasChildren !== false ? (sub.expanded ? '▼' : '▶') : '·') }}
+                    </span>
+                    <span class="node-icon">📁</span>
+                    <span class="node-name" :title="sub.name">{{ sub.name }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tree-divider"></div>
           <div class="mount-box">
-            <div class="mount-label">文件总数</div>
+            <div class="mount-label">当前视图</div>
             <div class="mount-val">{{ displayFiles.length }} 项</div>
             <div class="mount-sub">
-              其中视频 {{ getCategoryCount('video') }} · 图片 {{ getCategoryCount('photo') }}
+              视频 {{ getCategoryCount('video') }} · 图片 {{ getCategoryCount('photo') }}
             </div>
           </div>
         </aside>
@@ -104,11 +170,38 @@
               <span class="crumb-root" @click="navigateTo(ROOT_PATH)">🏠 根目录</span>
               <template v-for="(seg, idx) in pathSegments" :key="idx">
                 <span class="crumb-sep">/</span>
-                <span 
-                  class="crumb-seg" 
-                  :class="{ 'crumb-cur': idx === pathSegments.length - 1 }"
-                  @click="navigateTo(seg.fullPath)"
-                >{{ seg.name }}</span>
+                
+                <!-- 级联快捷下拉导航 -->
+                <div class="crumb-segment-wrapper">
+                  <span 
+                    class="crumb-seg" 
+                    :class="{ 'crumb-cur': idx === pathSegments.length - 1 }"
+                    @click="navigateTo(seg.fullPath)"
+                  >{{ seg.name }}</span>
+                  <button 
+                    class="crumb-dropdown-arrow" 
+                    @click.stop="toggleCrumbMenu(seg, idx)"
+                    title="展开同级文件夹快速跳转"
+                  >▾</button>
+
+                  <!-- 同级目录悬浮快速跳转面板 -->
+                  <div v-if="activeCrumbIdx === idx" class="crumb-dropdown-menu" @click.stop>
+                    <div class="crumb-menu-title">同级文件夹</div>
+                    <div v-if="crumbSiblingsLoading" class="crumb-menu-loading">加载中...</div>
+                    <div v-else-if="crumbSiblings.length === 0" class="crumb-menu-empty">无同级文件夹</div>
+                    <div 
+                      v-else 
+                      v-for="sib in crumbSiblings" 
+                      :key="sib.path"
+                      class="crumb-menu-item"
+                      :class="{ active: sib.path === seg.fullPath }"
+                      @click="navigateTo(sib.path); activeCrumbIdx = -1"
+                    >
+                      <span>📁</span>
+                      <span class="sib-name">{{ sib.name }}</span>
+                    </div>
+                  </div>
+                </div>
               </template>
             </div>
             
@@ -244,6 +337,118 @@ const viewMode = ref('grid'); // 'grid' | 'list'
 const activeCategory = ref('all');
 const currentFolderFiles = ref([]);
 const loadingFolder = ref(false);
+
+// ===== 核心：多级交互式目录树 (Folder Tree State) =====
+const folderTree = ref([]);
+const selectedTreePath = ref('');
+
+// ===== 面包屑同级快速跳转下拉 =====
+const activeCrumbIdx = ref(-1);
+const crumbSiblings = ref([]);
+const crumbSiblingsLoading = ref(false);
+
+function selectCategory(k) {
+  activeCategory.value = k;
+  selectedTreePath.value = '';
+}
+
+// 刷新并构建根部文件夹树
+async function refreshTree() {
+  if (!ROOT_PATH.value) return;
+  try {
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(ROOT_PATH.value)}`);
+    const data = await res.json();
+    if (data.status === 'ok' && data.data?.files) {
+      const dirs = data.data.files.filter(f => f.isDir || f.type === 'dir');
+      folderTree.value = dirs.map(d => ({
+        name: d.name,
+        path: d.path,
+        level: 0,
+        expanded: false,
+        loading: false,
+        hasChildren: true,
+        children: []
+      }));
+    }
+  } catch (e) {
+    console.error('构建根目录树失败:', e);
+  }
+}
+
+// 展开/折叠指定节点
+async function toggleTreeNode(node) {
+  if (node.expanded) {
+    node.expanded = false;
+    return;
+  }
+  node.expanded = true;
+  if (!node.children || node.children.length === 0) {
+    node.loading = true;
+    try {
+      const res = await fetch(`/api/files?parent=${encodeURIComponent(node.path)}`);
+      const data = await res.json();
+      if (data.status === 'ok' && data.data?.files) {
+        const dirs = data.data.files.filter(f => f.isDir || f.type === 'dir');
+        node.children = dirs.map(d => ({
+          name: d.name,
+          path: d.path,
+          level: node.level + 1,
+          expanded: false,
+          loading: false,
+          hasChildren: true,
+          children: []
+        }));
+        if (dirs.length === 0) node.hasChildren = false;
+      }
+    } catch (e) {
+      console.error('拉取子目录失败:', e);
+    } finally {
+      node.loading = false;
+    }
+  }
+}
+
+// 点击目录树节点跳转
+function handleTreeNodeClick(node) {
+  selectedTreePath.value = node.path;
+  activeCategory.value = 'all'; // 目录树视图展示全类型
+  navigateTo(node.path);
+}
+
+// 切换面包屑同级目录快速跳转面板
+async function toggleCrumbMenu(seg, idx) {
+  if (activeCrumbIdx.value === idx) {
+    activeCrumbIdx.value = -1;
+    return;
+  }
+  activeCrumbIdx.value = idx;
+  crumbSiblings.value = [];
+  crumbSiblingsLoading.value = true;
+
+  // 计算父级路径
+  const parentPath = seg.fullPath.substring(0, seg.fullPath.lastIndexOf('/')) || ROOT_PATH.value;
+  try {
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(parentPath)}`);
+    const data = await res.json();
+    if (data.status === 'ok' && data.data?.files) {
+      crumbSiblings.value = data.data.files
+        .filter(f => f.isDir || f.type === 'dir')
+        .map(f => ({ name: f.name, path: f.path }));
+    }
+  } catch (e) {
+    crumbSiblings.value = [];
+  } finally {
+    crumbSiblingsLoading.value = false;
+  }
+}
+
+// 点击外部关闭面包屑下拉
+function setupOutsideClick() {
+  window.addEventListener('click', () => {
+    activeCrumbIdx.value = -1;
+  });
+}
+setupOutsideClick();
 
 // 上传与操作状态
 const fileInputRef = ref(null);
@@ -455,12 +660,16 @@ async function deleteFile(file) {
   }
 }
 
-// 监听弹窗显示，恢复根目录
+// 监听弹窗显示，恢复根目录并初始化目录树
 watch(() => props.visible, (val) => {
   if (val) {
     currentPath.value = ROOT_PATH.value;
     pathStack.value = [ROOT_PATH.value];
     currentFolderFiles.value = [];
+    selectedTreePath.value = '';
+    if (folderTree.value.length === 0) {
+      refreshTree();
+    }
   }
 });
 
@@ -469,6 +678,7 @@ watch(() => props.rootPath, (val) => {
   if (val && currentFolderFiles.value.length === 0) {
     currentPath.value = val;
     pathStack.value = [val];
+    refreshTree();
   }
 });
 
@@ -881,6 +1091,176 @@ function handleFileClick(file) {
   height: 1px;
   background: var(--mi-border);
   margin: 14px 0;
+}
+
+/* 目录树导航样式 */
+.tree-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.tree-refresh-btn {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.tree-refresh-btn:hover {
+  color: var(--mi-orange);
+}
+
+.folder-tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+.tree-node-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #334155;
+  transition: all 0.15s;
+}
+
+.tree-node-item:hover {
+  background: #f1f5f9;
+}
+
+.tree-node-item.active {
+  background: #fff7ed;
+  color: var(--mi-orange);
+  font-weight: 600;
+}
+
+.node-arrow {
+  font-size: 9px;
+  color: #94a3b8;
+  width: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.node-arrow:hover {
+  color: var(--mi-orange);
+}
+
+.node-arrow.expanded {
+  color: var(--mi-orange);
+}
+
+.node-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.node-icon {
+  font-size: 14px;
+}
+
+.tree-children-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 面包屑级联下拉跳转 */
+.crumb-segment-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.crumb-dropdown-arrow {
+  font-size: 10px;
+  color: #94a3b8;
+  padding: 2px 4px;
+  margin-left: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.crumb-dropdown-arrow:hover {
+  background: #f1f5f9;
+  color: var(--mi-orange);
+}
+
+.crumb-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #ffffff;
+  border: 1px solid var(--mi-border);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.crumb-menu-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.crumb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.crumb-menu-item:hover {
+  background: #f8fafc;
+  color: var(--mi-orange);
+}
+
+.crumb-menu-item.active {
+  background: #fff7ed;
+  color: var(--mi-orange);
+  font-weight: 600;
+}
+
+.crumb-menu-loading, .crumb-menu-empty {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 12px;
+  text-align: center;
+}
+
+.sib-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mount-box {
