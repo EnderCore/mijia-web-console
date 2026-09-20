@@ -26,6 +26,7 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 const { execSync } = require("child_process");
+const { MqttBridge, mqttAvailable } = require("./mqtt-bridge");
 
 // 端口可用环境变量覆盖，便于本地验证时不干扰已运行的实例
 const SERVER_PORT = parseInt(process.env.GATEWAY_PORT || "8090", 10);
@@ -100,6 +101,43 @@ let accessToken = "";
 let lastTokenTime = 0;
 let rttHistory = [];
 let webdavCreds = null;
+
+// MQTT 推送桥：只读订阅 NAS 事件，经 SSE 分发给前端
+const sseClients = new Set();
+let latestMeminfo = null;   // meminfo/update 是唯一内存数据源（无 HTTP 接口）
+let mqttBridge = null;
+
+function sseBroadcast(topic, data) {
+  const frame = `data: ${JSON.stringify({ topic, data, ts: Date.now() })}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(frame); } catch (e) { sseClients.delete(res); }
+  }
+}
+
+function getUidFromCreds() {
+  const c = ensureWebdavCreds();
+  const m = c && c.username ? c.username.match(/u(\d+)/) : null;
+  return m ? m[1] : "";
+}
+
+function startMqttBridge() {
+  if (!mqttAvailable || mqttBridge) return;
+  mqttBridge = new MqttBridge(
+    {
+      ensureReady,
+      getUrlPort: () => activeUrlPort,
+      getAccessToken: () => accessToken,
+      getUid: getUidFromCreds,
+      cert, key, ca,
+    },
+    (topic, data) => {
+      // meminfo 缓存起来并入 /api/system
+      if (topic.endsWith("/meminfo/update")) latestMeminfo = data;
+      sseBroadcast(topic, data);
+    }
+  );
+  mqttBridge.start();
+}
 
 // ============ 硬件与存储信息（全部来自 NAS 真实接口）============
 //
@@ -185,6 +223,19 @@ async function fetchHardwareInfo() {
     if (st.ups) {
       info.ups.enabled = st.ups.status === "enable";
       info.ups.health = st.ups.health || null;
+    }
+  }
+
+  // 内存占用没有 HTTP 查询接口，只能取 MQTT 推送缓存（latestMeminfo）。
+  // 字段名待用户探针确认：常见形状是 {total, used/free}（KB 或字节）。
+  if (latestMeminfo) {
+    const m = latestMeminfo;
+    const total = parseInt(m.total ?? m.total_size ?? m.totalBytes ?? 0, 10) || null;
+    const used = parseInt(m.used ?? m.used_size ?? m.usedBytes ?? 0, 10) || null;
+    if (total) {
+      info.memory.totalBytes = total;
+      info.memory.usedBytes = used;
+      info.memory.usagePercent = used != null ? Math.round((used / total) * 100) : null;
     }
   }
 
@@ -1266,6 +1317,29 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 10.1 /api/events —— MQTT 推送的 SSE 转发（只读通道）
+  //
+  // 前端用 EventSource 订阅；网关侧把 mqtt-bridge 收到的每条 {topic,data}
+  // 原样广播。SSE 是单向的，浏览器无法经此向 NAS 发任何东西。
+  if (pathname === "/api/events") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.write(`data: ${JSON.stringify({ topic: "gateway/hello", data: { mqtt: mqttBridge?.connected || false } })}\n\n`);
+    sseClients.add(res);
+    const ka = setInterval(() => {
+      try { res.write(": keepalive\n\n"); } catch (e) {}
+    }, 25000);
+    req.on("close", () => {
+      clearInterval(ka);
+      sseClients.delete(res);
+    });
+    return;
+  }
+
   // 10. /api/monitor 实时网络 RTT 测量
   if (pathname === "/api/monitor") {
     const start = Date.now();
@@ -1507,6 +1581,8 @@ server.listen(SERVER_PORT, "127.0.0.1", async () => {
     await ensureReady();
     console.log(`[√] 成功捕获穿透通道 127.0.0.1:${activeUrlPort} 并完成 Token 鉴权就绪！`);
     console.log(`[√] WebDAV 文件读写通道: 127.0.0.1:${activeWebdavPort} (上传/下载/删除已就绪)`);
+    startMqttBridge();
+    console.log(`[√] MQTT 只读推送桥已启动: /api/events (SSE)`);
   } catch (e) {
     console.log(`[*] 会话提醒: ${e.message} (服务已进入智能演示/离线待命模式)`);
   }

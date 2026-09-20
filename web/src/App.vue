@@ -13,6 +13,11 @@
 
     <!-- 主界面内容区 (仿米家卡片式极简布局) -->
     <main class="main-content">
+      <!-- 实时推送通知条（MQTT 经 SSE 转发） -->
+      <div v-if="notifications.length" class="notify-stack">
+        <div v-for="n in notifications" :key="n.ts + n.text" class="notify-item">{{ n.text }}</div>
+      </div>
+
       <!-- 离线提示横幅 -->
       <div v-if="!isOnline" class="offline-banner">
         <div class="banner-content">
@@ -75,6 +80,10 @@
         <span class="dot">·</span>
         <span :class="isOnline ? 'text-green' : 'text-orange'">
           {{ isOnline ? 'P2P 直通 (127.0.0.1:' + statusInfo.urlPort + ')' : '未连接官方客户端' }}
+        </span>
+        <span class="dot">·</span>
+        <span :class="mqttConnected ? 'text-green' : 'text-muted'">
+          {{ mqttConnected ? '推送通道已连接' : '推送通道未连接' }}
         </span>
         <span class="dot">·</span>
         <span>缩略图缓存: 本地磁盘 (server/cache)</span>
@@ -369,6 +378,7 @@ const systemHardwareInfo = ref({
   network: { ip: null, mac: null, upload: null, download: null },
   system: { model: null, serial: null, version: null },
   ups: { enabled: null },
+  memory: { totalBytes: null, usedBytes: null, usagePercent: null },
   disks: []
 });
 
@@ -377,6 +387,79 @@ const monitorData = ref({
   history: [],
   tunnel: '本地隧道 / P2P 直连'
 });
+
+// ===== MQTT 推送（只读）：经 /api/events SSE 接收 =====
+const mqttConnected = ref(false);
+const notifications = ref([]);   // 最近几条推送通知（磁盘/USB/任务等）
+let eventSource = null;
+
+function pushNotification(text) {
+  notifications.value.unshift({ text, ts: Date.now() });
+  if (notifications.value.length > 5) notifications.value.pop();
+  // 8 秒后自动移除该条
+  setTimeout(() => {
+    const i = notifications.value.findIndex(n => n.text === text);
+    if (i >= 0) notifications.value.splice(i, 1);
+  }, 8000);
+}
+
+function handleMqttEvent(topic, data) {
+  if (topic === 'gateway/hello') {
+    mqttConnected.value = !!data?.mqtt;
+    return;
+  }
+  if (topic.endsWith('/meminfo/update')) {
+    // /api/system 下次轮询会自动带上内存数据，这里只标记通道活着
+    mqttConnected.value = true;
+    return;
+  }
+  if (topic.endsWith('/filemgr') || topic.endsWith('/homepage')) {
+    // 文件操作完成 → 任务中心开着就刷新
+    if (activeDialog.value?.type === 'task') loadTasks(taskTab.value);
+    pushNotification('📁 文件任务有更新');
+    return;
+  }
+  if (topic.endsWith('/disk')) {
+    pushNotification('💾 磁盘空间告警');
+    return;
+  }
+  if (topic.endsWith('/usbinfo/update')) {
+    pushNotification('🔌 USB 设备插拔');
+    loadAllData();
+    return;
+  }
+  if (topic.endsWith('/storage/modifypool')) {
+    pushNotification('🗄️ 存储池变更');
+    loadAllData();
+    return;
+  }
+  if (topic.includes('/album/')) {
+    // 相册弹窗开着时刷新
+    if (activeDialog.value?.type === 'album') openAlbum();
+    return;
+  }
+  // 其余主题（safebox/plugin/ipc）先只做通知
+  pushNotification(`📨 ${topic.split('/').pop()} 事件`);
+}
+
+function startEventStream() {
+  if (eventSource) return;
+  try {
+    eventSource = new EventSource('/api/events');
+    eventSource.onmessage = (e) => {
+      try {
+        const { topic, data } = JSON.parse(e.data);
+        handleMqttEvent(topic, data);
+      } catch (err) {}
+    };
+    eventSource.onerror = () => {
+      mqttConnected.value = false;
+      // EventSource 自带重连；轮询兜底一直在跑，无需额外处理
+    };
+  } catch (e) {
+    // SSE 不可用时静默，轮询仍工作
+  }
+}
 
 const appsList = ref([]);
 const recentFiles = ref([]);
@@ -855,12 +938,14 @@ onMounted(async () => {
   }
 
   loadAllData();
+  startEventStream();
   // 每 8 秒自动轮询一次网络状态与硬件探针
   timer = setInterval(loadAllData, 8000);
 });
 
 onUnmounted(() => {
   if (timer) clearInterval(timer);
+  if (eventSource) { eventSource.close(); eventSource = null; }
 });
 </script>
 
@@ -878,6 +963,28 @@ onUnmounted(() => {
   width: 100%;
   margin: 0 auto;
   padding: 24px 32px 40px;
+}
+
+/* 实时推送通知条 */
+.notify-stack {
+  position: fixed;
+  top: 70px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 900;
+}
+
+.notify-item {
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  animation: fadeIn 0.2s ease-out;
 }
 
 .offline-banner {

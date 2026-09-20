@@ -43,7 +43,9 @@ connectMqtt({ ip, port, uid, deviceId, token })
 }
 ```
 
-**关键点**：MQTT broker 就挂在 `urlport` 这一个端口上，与 HTTPS LuCI 共用。
+**关键点**：MQTT broker 就挂在 `urlport` 这一个端口上，与 HTTPS LuCI 共用，
+但 WebSocket 端点路径是 **`/mqtt`**——裸 `wss://host:port` 会被 nginx 当普通
+HTTPS 请求处理，101 升级后立即关连接（2026-09-20 实测确认）。
 不需要探测新端口；证书、token、DID 指纹校验全部复用网关现有资产。
 
 ### 1.2 订阅主题表（从 layout bundle 原样提取）
@@ -94,44 +96,49 @@ connectMqtt({ ip, port, uid, deviceId, token })
 
 ## 三、分步实现计划
 
-### 里程碑 0 —— 只读探针（不改网关/前端，验证可行性）
+### 里程碑 0 —— 只读探针（不改网关/前端，验证可行性）✅ 已验证
 
 交付物：`tools/probe-mqtt.cjs`
 
-- 用 `mqtt` npm 包（client 自带 node_modules 里有，或直接 `npm i mqtt` 到 tools 作用域）
-- 连接参数完全复刻官方：wss://127.0.0.1:<urlport>，cert/key/ca，username `<uid>_<rand-suffix>`，password = accessToken，clientId `dev-zcode-probe-<rand>`
-- 只 subscribe：`/sys/nas/alluser/meminfo/update` + `/sys/nas/alluser/usbinfo/update` + `/sys/nas/alluser/disk`
-- 打印每条消息的 topic + payload，运行 90 秒自动退出
-- **验证点**：① 能否连上；② meminfo 推送的字段结构；③ 连接期间官方客户端是否掉线（用户观察）
+实测结果（2026-09-20，用户手动运行）：
 
-验收：用户运行 `node tools/probe-mqtt.cjs`，确认收到推送且官方客户端无异常。
+- `wss://127.0.0.1:<urlport>/mqtt` 连接成功、SUBSCRIBE 成功——**官方客户端未掉线**，并发会话安全。
+- 两个坑已修正：
+  - WS 端点必须带路径 `/mqtt`，裸 `wss://host:port` 会被 nginx 当 HTTPS 处理，101 升级后立即关闭；
+  - wsOptions 必须带 `Cookie: token=...` + `Authorization: <token>` 头，否则 CONNACK 返回 `Not authorized`。
+- username 就是官方形状 `<uid>_<deviceUid>`（deviceUid 来自 `%APPDATA%/SmartStorage/.device.uid`）；clientId `dev-<deviceUid>`。
+- **消息频率观察**：空闲状态下 120 秒内没有收到任何推送——`meminfo/update` 等主题应该是事件触发或有长周期心跳，不是高频推送。前台有文件操作/相册变更/插 USB 时会触发。
+- `#` 通配订阅被 broker 拒绝（Unspecified error），只能逐个主题订阅（官方客户端也是这么做的）。
 
-### 里程碑 1 —— 网关 MQTT→SSE 桥
+### 里程碑 1 —— 网关 MQTT→SSE 桥 ✅ 已实现
 
-交付物：gateway.js 新增 `/api/events`（Server-Sent Events）+ 内部 MqttBridge 模块
+交付物：`server/mqtt-bridge.js` + gateway.js 的 `/api/events`
 
-- 复用 cert/key/ca/ensureReady()，username 用 `<uid>_zcode-<rand>`
-- 订阅全部 14 个主题，收到消息 → `{topic, data, ts}` 推给所有 SSE 客户端
-- meminfo 推送单独解析出 `{totalBytes, usedBytes, usagePercent}` 合并进 `/api/system` 响应（补上现在 null 的内存字段）
-- 断线重连：先 `ensureReady()` 刷 token，指数退避（1s→30s 封顶）
-- **不 publish、不响应任何 NAS 侧请求**
+- MqttBridge 模块：复用 cert/key/ca/ensureReady()，自动读 deviceUid；
+  username 后缀候选轮换（deviceUid → zcode-rand → user0 → 裸 uid）应对授权差异
+- 订阅全部 14 个主题，收到消息 → `{topic, data, ts}` 经 SSE 广播给所有前端连接
+- `meminfo/update` 缓存进 `latestMeminfo`，并入 `/api/system` 的 `memory` 字段
+  （补上唯一没有 HTTP 接口的内存数据）
+- 断线重连：先 `ensureReady()` 刷 token，指数退避 1s→30s
+- **不 publish**，SSE 是单向通道，浏览器无法经此向 NAS 发任何东西
 
-验收：用户打开 `http://127.0.0.1:8090/api/events` 或 curl 能看到事件流。
+验收：`curl -N http://127.0.0.1:8090/api/events` 能看到 `gateway/hello` +
+keepalive；NAS 侧有事件时实时出现 `data: {topic,...}`。
 
-### 里程碑 2 —— 前端接入
+### 里程碑 2 —— 前端接入 ✅ 已实现
 
-- `EventSource('/api/events')` 全局监听
-- `meminfo/update` → 更新 MonitorChart 内存条（首次有真实数据）
-- `filemgr`/`homepage` → 任务中心自动刷新 + toast「任务完成」
+- `EventSource('/api/events')` 全局监听（App.vue）
+- `meminfo/update` → MonitorChart 新增「内存占用」卡片（未收到推送前显示"未上报"）
+- `filemgr`/`homepage` → 任务中心弹窗开着时自动刷新 + 通知条「文件任务有更新」
 - `album/*` → 相册弹窗开着时自动刷新列表
-- `disk`/`usbinfo` → 右上角通知条
-- `storage/modifypool` → 重新拉 `/api/system`
-- 事件源断开时静默回退到现有 8s 轮询（已经存在，零成本兜底）
+- `disk`/`usbinfo`/`modifypool` → 右上角通知条 + 触发 `loadAllData()`
+- 底栏新增「推送通道已连接/未连接」状态指示
+- SSE 断开时现有 8s 轮询继续兜底，零成本回退
 
-### 里程碑 3 —— 通知中心（可选，依赖里程碑 2 稳定后）
+### 里程碑 3 —— 通知中心（可选，暂缓）
 
-noticeList 消息走主进程 DB（msgDbBase）存储再分发，渲染层有独立 `notice` 页面。
-评估后可做可不做：站内信查询可能另有 HTTP 接口，优先级最低。
+noticeList 消息走主进程 msgDbBase 存储再分发，渲染层有独立 `notice` 页面。
+价值低（站内信为主），暂不做。
 
 ## 四、不做清单（写边界）
 
@@ -139,7 +146,12 @@ noticeList 消息走主进程 DB（msgDbBase）存储再分发，渲染层有独
 - 不碰 `storage/modifypool` 等主题对应的 LuCI 写接口——主题只是通知通道
 - 不主动发 PINGREQ 以外任何包（keepalive 由 mqtt.js 自动管理，属协议维持，不是业务写）
 
-## 五、当前阻塞点
+## 五、当前状态
 
-里程碑 0 的探针脚本已可写，但**运行验证必须由用户执行**（约束）。
-唯一技术不确定项：broker 是否容忍第二个并发 MQTT 会话（见风险表）。
+里程碑 0–2 全部落地。待用户在真实使用中观察：
+- 空闲期无推送是正常的（NAS 事件触发才发）；
+- 若在官方客户端里做文件操作/相册变更/插拔 USB，网页版应在数秒内出通知条；
+- 内存卡片在收到首次 `meminfo/update` 后出现真实读数（可能需要触发一次系统事件或等待其周期推送）。
+
+如 broker 在长时间空闲后断连（网关日志显示"连接断开，准备重连"属正常，
+重连会自动换 token 重试），不需要人工干预。

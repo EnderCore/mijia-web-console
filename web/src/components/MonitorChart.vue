@@ -30,6 +30,20 @@
 
         <div class="hw-item">
           <div class="hw-top">
+            <span class="hw-name">内存占用</span>
+            <span class="hw-val text-muted">{{ memText }}</span>
+          </div>
+          <div class="hw-bar">
+            <div class="hw-bar-fill blue" :style="{ width: memBarWidth }"></div>
+          </div>
+          <div class="hw-sub">
+            <span>{{ memDetail }}</span>
+            <span v-if="!hasMem">经 MQTT 推送获取</span>
+          </div>
+        </div>
+
+        <div class="hw-item">
+          <div class="hw-top">
             <span class="hw-name">风扇</span>
             <span class="hw-val text-blue">{{ fanSpeedText }}</span>
           </div>
@@ -130,9 +144,24 @@ const props = defineProps({
       fan: { rpm: null, mode: null },
       network: { ip: null, mac: null, upload: null, download: null },
       system: { model: null, serial: null, version: null },
-      ups: { enabled: null }
+      ups: { enabled: null },
+      memory: { totalBytes: null, usedBytes: null, usagePercent: null }
     })
   }
+});
+
+// 内存数据只来自 MQTT meminfo 推送（NAS 无 HTTP 查询接口），
+// 未收到推送前显示"未上报"而不是编造数值。
+const hasMem = computed(() => props.systemInfo.memory && props.systemInfo.memory.totalBytes != null);
+const memText = computed(() => hasMem.value && props.systemInfo.memory.usagePercent != null
+  ? props.systemInfo.memory.usagePercent + '%' : '未上报');
+const memBarWidth = computed(() => hasMem.value && props.systemInfo.memory.usagePercent != null
+  ? Math.min(100, props.systemInfo.memory.usagePercent) + '%' : '0%');
+const memDetail = computed(() => {
+  const m = props.systemInfo.memory;
+  if (!hasMem.value) return '';
+  const fmt = (b) => { const n = parseInt(b,10); return n > 1e12 ? (n/1e12).toFixed(1)+' TB' : n > 1e9 ? (n/1e9).toFixed(1)+' GB' : (n/1e6).toFixed(0)+' MB'; };
+  return m.usedBytes != null ? `${fmt(m.usedBytes)} / ${fmt(m.totalBytes)}` : `总量 ${fmt(m.totalBytes)}`;
 });
 
 // 未上报的指标显示为"未上报"，不要假装是 0% 或某个具体读数

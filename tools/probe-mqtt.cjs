@@ -114,7 +114,7 @@ function fetchToken(port) {
   console.log(`username=${UID}_zcode-${randSuffix}`);
   console.log();
 
-  const client = mqtt.connect(`wss://127.0.0.1:${PORT}`, {
+  const client = mqtt.connect(`wss://127.0.0.1:${PORT}/mqtt`, {
     clientId: `dev-zcode-probe-${randSuffix}`,
     username: `${UID}_zcode-${randSuffix}`,
     password: token,
