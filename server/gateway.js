@@ -59,12 +59,41 @@ if (fs.existsSync(certDir)) {
 
 const needle = crypto.createHash("sha1").update(DID).digest("hex");
 
+// 2.1 自动提取官方客户端 WebDAV 动态凭据
+// 官方 Electron 渲染进程把 webDavInfo 存在 Local Storage 的 leveldb 里，形如：
+// {"username":"u2912935973","port":62185,"alias_root":"/home/u2912935973",
+//  "uri":"https://127.0.0.1:62185","password":"...","port_2":62188}
+// 用户名/密码每次会话轮换，因此必须运行时读取，不能硬编码。
+function readWebdavCredentials() {
+  const lsDir = path.join(process.env.APPDATA || "", "SmartStorage", "Partitions", "session", "Local Storage", "leveldb");
+  if (!fs.existsSync(lsDir)) return null;
+
+  let newest = null;
+  for (const fn of fs.readdirSync(lsDir)) {
+    if (!/\.(ldb|log)$/.test(fn)) continue;
+    try {
+      const stat = fs.statSync(path.join(lsDir, fn));
+      const raw = fs.readFileSync(path.join(lsDir, fn)).toString("latin1");
+      const m = raw.match(/\{"username":"[^"]+","port":\d+,"alias_root":"[^"]*","uri":"[^"]+","password":"[^"]+","port_2":\d+\}/);
+      if (m) {
+        const parsed = JSON.parse(m[0]);
+        if (!newest || stat.mtimeMs > newest.mtimeMs) {
+          newest = Object.assign(parsed, { mtimeMs: stat.mtimeMs });
+        }
+      }
+    } catch (e) { /* 单个文件损坏不影响其它文件 */ }
+  }
+  return newest;
+}
+
 // 3. 运行时状态
 let activeUrlPort = 0;
+let activeWebdavPort = 0;
 let activeWebPort = 0;
 let accessToken = "";
 let lastTokenTime = 0;
 let rttHistory = [];
+let webdavCreds = null;
 
 // 4. 高保真系统模拟数据 (当 NAS 离线或特定底层系统接口受限时使用，数据完全吻合真实硬件)
 // 小米智能存储硬件规格：Realtek RTD1619B 四核 ARM Cortex-A55 @ 1.7GHz，4GB 内存
@@ -249,8 +278,9 @@ async function detectActivePorts() {
 
     if (matched) {
       activeUrlPort = p;
-      activeWebPort = p + 2;
-      return { urlPort: activeUrlPort, webPort: activeWebPort };
+      activeWebdavPort = p + 1; // base+1 = WebDAV (文件读写)
+      activeWebPort = p + 2;    // base+2 = 明文 Web (插件入口)
+      return { urlPort: activeUrlPort, webdavPort: activeWebdavPort, webPort: activeWebPort };
     }
   }
   throw new Error("未在当前监听端口中找到匹配 NAS 设备指纹的 TLS 端口");
@@ -306,6 +336,67 @@ async function ensureReady() {
     accessToken = await fetchToken(activeUrlPort);
     lastTokenTime = Date.now();
   }
+}
+
+// 保证 WebDAV 凭据可用 (官方客户端每次会话轮换动态密码，需定期重读)
+function ensureWebdavCreds() {
+  if (!webdavCreds || Date.now() - webdavCreds.mtimeMs > 5 * 60 * 1000) {
+    webdavCreds = readWebdavCredentials();
+  }
+  return webdavCreds;
+}
+
+// 向 NAS 的 WebDAV 端点发起请求 (mTLS + HTTP Basic)
+// 注意：WebDAV 的根是 alias_root (/home/u<UID>)，路径必须相对于它，否则 Nginx 返回 451。
+// 返回 Node 的 ClientRequest，调用方可自行 pipe 请求体并监听 'response'。
+function openWebdavRequest(method, apiPath, headers = {}, timeoutMs = 600000) {
+  const creds = ensureWebdavCreds();
+  if (!creds) {
+    throw new Error("未找到官方客户端 WebDAV 凭据，请确认小米智能存储客户端已登录运行");
+  }
+  if (!activeWebdavPort) {
+    throw new Error("WebDAV 穿透端口尚未就绪");
+  }
+
+  const auth = "Basic " + Buffer.from(`${creds.username}:${creds.password}`).toString("base64");
+  const reqHeaders = Object.assign({ Authorization: auth }, headers);
+
+  // 官方客户端把路径写在 alias_root 下，剥离前缀得到相对路径
+  const relative = apiPath.startsWith(creds.alias_root)
+    ? apiPath.slice(creds.alias_root.length)
+    : apiPath;
+
+  const req = https.request({
+    host: "127.0.0.1",
+    port: activeWebdavPort,
+    path: relative || "/",
+    method: method,
+    rejectUnauthorized: false,
+    cert: cert,
+    key: key,
+    ca: ca,
+    headers: reqHeaders,
+    timeout: timeoutMs
+  });
+  return req;
+}
+
+// 便捷封装：发起请求并解析响应体 (用于非流式的小数据交互)
+function callWebdav(method, apiPath, headers = {}, body = null, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    let req;
+    try {
+      req = openWebdavRequest(method, apiPath, headers, timeoutMs);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("WebDAV 请求超时")); });
+    req.on("response", (res) => resolve(res));
+    if (body !== null) req.write(body);
+    req.end();
+  });
 }
 
 // 向 NAS 发送 POST JSON 请求
@@ -763,7 +854,171 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 9. /api/video/task 转码任务生命周期管理 (创建/查询清晰度/销毁)
+  // 9. /api/upload 文件上传 (WebDAV PUT，自动注入 mTLS + 动态 Basic 凭据)
+  // 用法: POST /api/upload?parent=<目录绝对路径>&filename=<文件名>  body = 原始文件字节流
+  if (pathname === "/api/upload") {
+    const parent = parsedUrl.searchParams.get("parent") || "";
+    const filename = parsedUrl.searchParams.get("filename") || "";
+    if (!parent || !filename) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: "缺少 parent 或 filename 参数" }));
+      return;
+    }
+
+    try {
+      await ensureReady();
+      if (!activeWebdavPort) await detectActivePorts();
+
+      const destPath = `${parent.replace(/\/$/, "")}/${filename}`;
+      const totalSize = parseInt(req.headers["content-length"] || "0", 10);
+
+      let responded = false;
+      const finish = (status, payload) => {
+        if (responded) return;
+        responded = true;
+        res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(payload));
+      };
+
+      // 必须声明 Content-Length，NAS 才会接受整块 PUT
+      const davReq = openWebdavRequest("PUT", destPath, {
+        "Content-Type": req.headers["content-type"] || "application/octet-stream",
+        "Content-Length": totalSize
+      });
+
+      davReq.on("response", (davRes) => {
+        // 204/201 表示写入成功
+        if (davRes.statusCode === 204 || davRes.statusCode === 201 || davRes.statusCode === 200) {
+          davRes.resume();
+          finish(200, { status: "ok", path: destPath, size: totalSize });
+        } else {
+          const chunks = [];
+          davRes.on("data", (d) => chunks.push(d));
+          davRes.on("end", () => finish(502, {
+            status: "error",
+            code: davRes.statusCode,
+            message: "NAS 拒绝上传: " + Buffer.concat(chunks).toString().substring(0, 200)
+          }));
+        }
+      });
+      davReq.on("error", (e) => finish(502, { status: "error", message: "上传通道错误: " + e.message }));
+
+      // 浏览器请求体流式转发到 NAS，不落地内存
+      req.pipe(davReq);
+    } catch (e) {
+      res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
+  // 9.1 /api/download 文件下载 (WebDAV GET，带 Content-Disposition 触发浏览器保存)
+  if (pathname === "/api/download") {
+    const filePath = parsedUrl.searchParams.get("path") || "";
+    if (!filePath) {
+      res.writeHead(400); res.end("Missing path parameter"); return;
+    }
+
+    try {
+      await ensureReady();
+      if (!activeWebdavPort) await detectActivePorts();
+
+      const headers = {};
+      if (req.headers["range"]) headers["Range"] = req.headers["range"];
+
+      const stream = await callWebdav("GET", filePath, headers);
+
+      if (stream.statusCode === 451) {
+        res.writeHead(451, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: "NAS 拒绝访问该路径 (451)" }));
+        return;
+      }
+
+      const outHeaders = {
+        "Content-Type": stream.headers["content-type"] || "application/octet-stream",
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`
+      };
+      if (stream.headers["content-length"]) outHeaders["Content-Length"] = stream.headers["content-length"];
+      if (stream.headers["content-range"]) outHeaders["Content-Range"] = stream.headers["content-range"];
+
+      res.writeHead(stream.statusCode, outHeaders);
+      stream.pipe(res);
+    } catch (e) {
+      if (!res.headersSent) {
+        res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: e.message }));
+      }
+    }
+    return;
+  }
+
+  // 9.2 /api/delete 删除文件或目录 (WebDAV DELETE)
+  if (pathname === "/api/delete") {
+    const target = parsedUrl.searchParams.get("path") || "";
+    if (!target) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: "缺少 path 参数" }));
+      return;
+    }
+
+    try {
+      await ensureReady();
+      if (!activeWebdavPort) await detectActivePorts();
+
+      const davRes = await callWebdav("DELETE", target);
+      const status = davRes.statusCode;
+      davRes.resume();
+
+      if (status === 204 || status === 200) {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok", path: target }));
+      } else {
+        res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", code: status, message: "删除失败 (HTTP " + status + ")" }));
+      }
+    } catch (e) {
+      res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
+  // 9.3 /api/mkdir 新建文件夹 (WebDAV MKCOL)
+  if (pathname === "/api/mkdir") {
+    const target = parsedUrl.searchParams.get("path") || "";
+    if (!target) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: "缺少 path 参数" }));
+      return;
+    }
+
+    try {
+      await ensureReady();
+      if (!activeWebdavPort) await detectActivePorts();
+
+      // 官方客户端路径统一以 / 结尾表示目录
+      const dirPath = target.endsWith("/") ? target : target + "/";
+      const davRes = await callWebdav("MKCOL", dirPath);
+      const status = davRes.statusCode;
+      davRes.resume();
+
+      if (status === 201 || status === 200 || status === 405) {
+        // 405 = 目录已存在，按成功处理
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok", path: dirPath }));
+      } else {
+        res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", code: status, message: "创建目录失败 (HTTP " + status + ")" }));
+      }
+    } catch (e) {
+      res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
+  // 10. /api/video/task 转码任务生命周期管理 (创建/查询清晰度/销毁)
   if (pathname === "/api/video/task") {
     try {
       await ensureReady();

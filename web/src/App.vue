@@ -91,6 +91,7 @@
       @play-video="handlePlayVideo"
       @preview-photo="handlePreviewMedia"
       @preview-doc="handlePreviewDoc"
+      @refresh="loadAllData"
     />
 
     <!-- 专业 Video.js 播放器弹窗 (支持清晰度与多分辨率自由切换) -->

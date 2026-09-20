@@ -20,6 +20,22 @@
             />
           </div>
 
+          <!-- 上传与新建操作 -->
+          <button class="action-pill upload-pill" @click="triggerFilePick" :disabled="uploading">
+            <span>{{ uploading ? '⏳' : '📤' }}</span>
+            <span>{{ uploading ? uploadProgress + '%' : '上传' }}</span>
+          </button>
+          <button class="action-pill" @click="handleMkdir" title="在当前目录新建文件夹">
+            <span>📁</span><span>新建文件夹</span>
+          </button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            multiple
+            class="hidden-input"
+            @change="handleUpload"
+          />
+
           <!-- 视图切换 (网格 / 列表) -->
           <div class="view-toggle">
             <button 
@@ -39,6 +55,15 @@
           <button class="close-x" @click="$emit('close')">✕</button>
         </div>
       </div>
+
+      <!-- 上传进度条 -->
+      <div v-if="uploading" class="upload-bar">
+        <div class="upload-fill" :style="{ width: uploadProgress + '%' }"></div>
+        <span class="upload-text">正在上传 {{ uploadingName }} · {{ uploadProgress }}%</span>
+      </div>
+
+      <!-- 操作结果提示 -->
+      <div v-if="toast" class="toast-msg" :class="toastType">{{ toast }}</div>
 
       <!-- 主体区域：左侧目录树导航 + 右侧文件内容流 -->
       <div class="explorer-body">
@@ -99,17 +124,17 @@
 
           <!-- 网格卡片视图 -->
           <div v-if="viewMode === 'grid'" class="files-grid">
-            <div 
-              v-for="file in displayFiles" 
-              :key="file.id || file.name" 
+            <div
+              v-for="file in displayFiles"
+              :key="file.id || file.name"
               class="file-card"
               @click="handleFileClick(file)"
             >
               <div class="card-preview">
-                <img 
-                  v-if="file.thumbnail" 
-                  :src="file.thumbnail" 
-                  :alt="file.name" 
+                <img
+                  v-if="file.thumbnail"
+                  :src="file.thumbnail"
+                  :alt="file.name"
                   class="preview-thumb"
                   loading="lazy"
                 />
@@ -117,6 +142,12 @@
 
                 <div v-if="file.type === 'video'" class="video-play-tag">
                   <span>▶ 播放</span>
+                </div>
+
+                <!-- 卡片悬浮操作按钮 -->
+                <div class="card-actions" @click.stop>
+                  <button class="ca-btn" @click="downloadFile(file)" title="下载">📥</button>
+                  <button class="ca-btn danger" @click="deleteFile(file)" title="删除">🗑</button>
                 </div>
               </div>
               <div class="card-meta">
@@ -134,15 +165,16 @@
             <table class="files-table">
               <thead>
                 <tr>
-                  <th style="width: 45%;">文件名</th>
-                  <th style="width: 15%;">类型</th>
-                  <th style="width: 20%;">大小</th>
-                  <th style="width: 20%;">修改时间</th>
+                  <th style="width: 42%;">文件名</th>
+                  <th style="width: 12%;">类型</th>
+                  <th style="width: 15%;">大小</th>
+                  <th style="width: 18%;">修改时间</th>
+                  <th style="width: 13%;">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr 
-                  v-for="file in displayFiles" 
+                <tr
+                  v-for="file in displayFiles"
                   :key="file.id || file.name"
                   class="table-row"
                   @click="handleFileClick(file)"
@@ -154,6 +186,10 @@
                   <td><span class="type-tag">{{ file.type }}</span></td>
                   <td class="font-mono">{{ formatSize(file.size) }}</td>
                   <td class="time-text">{{ formatDate(file.modified_time) }}</td>
+                  <td class="ops-cell" @click.stop>
+                    <button class="row-op" @click="downloadFile(file)" title="下载">📥</button>
+                    <button class="row-op danger" @click="deleteFile(file)" title="删除">🗑</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -172,7 +208,7 @@ const props = defineProps({
   files: { type: Array, default: () => [] }
 });
 
-const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc']);
+const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc', 'refresh']);
 
 const ROOT_PATH = '/home/u2912935973/pool0/data';
 const currentPath = ref(ROOT_PATH);
@@ -182,6 +218,22 @@ const viewMode = ref('grid'); // 'grid' | 'list'
 const activeCategory = ref('all');
 const currentFolderFiles = ref([]);
 const loadingFolder = ref(false);
+
+// 上传与操作状态
+const fileInputRef = ref(null);
+const uploading = ref(false);
+const uploadProgress = ref(0);
+const uploadingName = ref('');
+const toast = ref('');
+const toastType = ref('ok');
+let toastTimer = null;
+
+function showToast(msg, type = 'ok') {
+  toast.value = msg;
+  toastType.value = type;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.value = ''; }, 3000);
+}
 
 const categories = [
   { key: 'all', name: '全部文件', icon: '📂' },
@@ -246,6 +298,132 @@ function navigateUp() {
     } else {
       loadFolder(prev);
     }
+  }
+}
+
+// 重新加载当前目录
+function reloadCurrent() {
+  if (currentPath.value === ROOT_PATH) {
+    emit('refresh');
+  } else {
+    loadFolder(currentPath.value);
+  }
+}
+
+// ---------- 上传 ----------
+function triggerFilePick() {
+  if (uploading.value) return;
+  fileInputRef.value?.click();
+}
+
+async function handleUpload(evt) {
+  const picked = Array.from(evt.target.files || []);
+  if (!picked.length) return;
+
+  uploading.value = true;
+  let okCount = 0;
+
+  for (const f of picked) {
+    uploadingName.value = f.name;
+    uploadProgress.value = 0;
+    try {
+      await uploadOne(f);
+      okCount++;
+    } catch (e) {
+      showToast(`「${f.name}」上传失败: ${e.message}`, 'err');
+    }
+  }
+
+  uploading.value = false;
+  uploadProgress.value = 0;
+  uploadingName.value = '';
+  // 允许重复选择同一文件
+  if (fileInputRef.value) fileInputRef.value.value = '';
+
+  if (okCount > 0) {
+    showToast(`已成功上传 ${okCount} 个文件`, 'ok');
+    reloadCurrent();
+  }
+}
+
+function uploadOne(file) {
+  return new Promise((resolve, reject) => {
+    const url = `/api/upload?parent=${encodeURIComponent(currentPath.value)}&filename=${encodeURIComponent(file.name)}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+      }
+    };
+    xhr.onload = () => {
+      try {
+        const res = JSON.parse(xhr.responseText);
+        if (xhr.status === 200 && res.status === 'ok') resolve(res);
+        else reject(new Error(res.message || `HTTP ${xhr.status}`));
+      } catch (e) {
+        reject(new Error(`HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.send(file);
+  });
+}
+
+// ---------- 下载 ----------
+function downloadFile(file) {
+  if (file.isDir || file.xattr?.directory) {
+    showToast('文件夹暂不支持直接下载，请进入后选择文件', 'err');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = `/api/download?path=${encodeURIComponent(file.path)}`;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast(`开始下载「${file.name}」`, 'ok');
+}
+
+// ---------- 新建文件夹 ----------
+async function handleMkdir() {
+  const name = window.prompt('请输入新文件夹名称：');
+  if (!name || !name.trim()) return;
+  const clean = name.trim().replace(/[\\/]/g, '');
+  if (!clean) return;
+
+  try {
+    const res = await fetch(`/api/mkdir?path=${encodeURIComponent(currentPath.value + '/' + clean)}`);
+    const data = await res.json();
+    if (data.status === 'ok') {
+      showToast(`已创建文件夹「${clean}」`, 'ok');
+      reloadCurrent();
+    } else {
+      showToast('创建失败: ' + (data.message || ''), 'err');
+    }
+  } catch (e) {
+    showToast('创建失败: ' + e.message, 'err');
+  }
+}
+
+// ---------- 删除 ----------
+async function deleteFile(file) {
+  const target = file.path + ((file.isDir || file.xattr?.directory) ? '/' : '');
+  if (!window.confirm(`确定要删除「${file.name}」吗？此操作不可撤销。`)) return;
+
+  try {
+    const res = await fetch(`/api/delete?path=${encodeURIComponent(target)}`);
+    const data = await res.json();
+    if (data.status === 'ok') {
+      showToast(`已删除「${file.name}」`, 'ok');
+      reloadCurrent();
+    } else {
+      showToast('删除失败: ' + (data.message || ''), 'err');
+    }
+  } catch (e) {
+    showToast('删除失败: ' + e.message, 'err');
   }
 }
 
@@ -341,6 +519,7 @@ function handleFileClick(file) {
 }
 
 .explorer-modal {
+  position: relative;
   width: 92vw;
   max-width: 1380px;
   height: 88vh;
@@ -439,6 +618,162 @@ function handleFileClick(file) {
 
 .close-x:hover {
   color: var(--mi-text-main);
+}
+
+/* 上传与新建操作按钮 */
+.action-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 6px 12px;
+  border-radius: 18px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.action-pill:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: var(--mi-text-main);
+}
+
+.action-pill:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upload-pill {
+  background: linear-gradient(135deg, #ff6700, #ff8533);
+  color: #ffffff;
+}
+
+.upload-pill:hover:not(:disabled) {
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+.hidden-input {
+  display: none;
+}
+
+/* 上传进度条 */
+.upload-bar {
+  position: relative;
+  height: 26px;
+  background: #f1f5f9;
+  overflow: hidden;
+  border-bottom: 1px solid var(--mi-border);
+}
+
+.upload-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #ff6700, #ffa04d);
+  transition: width 0.2s ease;
+}
+
+.upload-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  line-height: 26px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* 操作结果提示 */
+.toast-msg {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.toast-msg.ok {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.toast-msg.err {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+/* 卡片悬浮操作 */
+.card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.file-card:hover .card-actions {
+  opacity: 1;
+}
+
+.ca-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: all 0.15s;
+}
+
+.ca-btn:hover {
+  background: #ffffff;
+  transform: scale(1.08);
+}
+
+.ca-btn.danger:hover {
+  background: #fee2e2;
+}
+
+/* 表格行操作 */
+.ops-cell {
+  display: flex;
+  gap: 6px;
+}
+
+.row-op {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.row-op:hover {
+  background: #e2e8f0;
+}
+
+.row-op.danger:hover {
+  background: #fee2e2;
 }
 
 .explorer-body {
