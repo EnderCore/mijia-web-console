@@ -173,24 +173,28 @@ function handleAppClick(app) {
 
 .badge {
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 8px;
-  font-weight: 500;
+  font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .badge.web {
-  background: #eff6ff;
-  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
 }
 
 .badge.running {
-  background: #ecfdf5;
-  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 .badge.uninstalled {
-  background: #f1f5f9;
-  color: #94a3b8;
+  background: var(--mi-control-sub-bg, #f1f5f9);
+  color: var(--mi-text-sub);
+  border: 1px solid var(--mi-border, transparent);
 }
 
 @media (max-width: 1024px) {
