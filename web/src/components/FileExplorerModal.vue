@@ -247,7 +247,11 @@
                 </div>
                 <div class="column-items-list">
                   <div v-if="col.loading" class="col-loading">读取中...</div>
-                  <div v-else-if="col.items.length === 0" class="col-empty">无子文件夹</div>
+                  <div v-else-if="col.items.length === 0" class="col-empty">
+                    <span class="empty-icon">📄</span>
+                    <span>无子文件夹</span>
+                    <span class="empty-sub" v-if="col.path === currentPath">(当前目录内容见下方列表)</span>
+                  </div>
                   <div
                     v-else
                     v-for="item in col.items"
@@ -1581,11 +1585,33 @@ function handleFileClick(file) {
   opacity: 0.7;
 }
 
-.col-loading, .col-empty {
+.col-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 11px;
   color: #94a3b8;
   text-align: center;
-  padding: 30px 0;
+  padding: 40px 10px;
+}
+
+.empty-icon {
+  font-size: 24px;
+  opacity: 0.5;
+}
+
+.empty-sub {
+  font-size: 10px;
+  color: #cbd5e1;
+}
+
+.col-loading {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 40px 0;
 }
 
 /* 真正的空文件夹提示面板 */
