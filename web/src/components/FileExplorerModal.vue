@@ -140,6 +140,7 @@
               v-for="file in displayFiles"
               :key="file.id || file.name"
               class="file-card"
+              v-smart-preload="file.previewUrl || file.thumbnail"
               @click="handleFileClick(file)"
             >
               <div class="card-preview">
@@ -217,6 +218,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { maskValue } from '../utils/privacy.js';
+import { vSmartPreload } from '../utils/preloader.js';
 
 // 路径脱敏只掩盖 /home/u<UID> 的账号段，目录结构保留，
 // 否则面包屑与路径展示会失去导航参考意义。

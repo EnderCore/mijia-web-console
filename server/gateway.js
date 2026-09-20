@@ -107,13 +107,13 @@ const sseClients = new Set();
 let latestMeminfo = null;   // meminfo/update 是唯一内存数据源（无 HTTP 接口）
 let mqttBridge = null;
 
-// 缩略图下载并发信号量控制（最多允许 4 个原图 WebDAV 下载并发，防止瞬间挤爆 P2P 隧道）
+// 缩略图下载并发信号量控制（调优为最多允许 6 个原图 WebDAV 下载并发，加速前后多屏平滑预取）
 let activeThumbnailJobs = 0;
 const thumbnailQueue = [];
 
 function acquireThumbnailSlot() {
   return new Promise(resolve => {
-    if (activeThumbnailJobs < 4) {
+    if (activeThumbnailJobs < 6) {
       activeThumbnailJobs++;
       resolve();
     } else {
