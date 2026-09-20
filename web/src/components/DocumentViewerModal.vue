@@ -19,9 +19,18 @@
 
       <!-- 预览核心展示区 -->
       <div class="doc-body">
-        <!-- 1. PDF 预览 (浏览器原生无损渲染器) -->
+        <!-- 1. PDF 预览 (支持 object / iframe 多级兼容与无插件回退) -->
         <div v-if="docCategory === 'pdf'" class="body-frame-box">
-          <iframe :src="fileStreamUrl" class="pdf-frame" frameborder="0"></iframe>
+          <object :data="fileStreamUrl" type="application/pdf" class="pdf-frame">
+            <iframe :src="fileStreamUrl" class="pdf-frame" frameborder="0">
+              <div class="pdf-fallback-box">
+                <p>当前浏览器环境未能直接嵌入 PDF 预览插件</p>
+                <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">
+                  📥 点击下载该 PDF 文件
+                </a>
+              </div>
+            </iframe>
+          </object>
         </div>
 
         <!-- 2. 文本 / 代码 / Markdown 预览 -->

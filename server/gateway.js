@@ -1104,12 +1104,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const fileName = path.basename(filePath);
+    const contentType = mimeFor(filePath);
+
     const responseHeaders = {
-      "Content-Type": streamRes.headers["content-type"] || mimeFor(filePath),
+      "Content-Type": contentType,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
       "Accept-Ranges": "bytes",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Range, Authorization, Content-Type",
-      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Disposition"
     };
     if (streamRes.headers["content-range"]) {
       responseHeaders["Content-Range"] = streamRes.headers["content-range"];
