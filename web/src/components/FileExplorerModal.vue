@@ -113,6 +113,7 @@
             </div>
             
             <div class="bar-actions">
+              <span v-if="loadingFolder" class="folder-loading-tag">⚡ 正在读取目录...</span>
               <button 
                 v-if="pathStack.length > 1" 
                 class="up-btn" 
@@ -127,8 +128,14 @@
             </div>
           </div>
 
+          <!-- 加载中骨架态反馈 -->
+          <div v-if="loadingFolder" class="loading-skeleton-box">
+            <div class="skeleton-shimmer"></div>
+            <div class="skeleton-text">正在快速读取 NAS 目录结构，请稍候...</div>
+          </div>
+
           <!-- 网格卡片视图 -->
-          <div v-if="viewMode === 'grid'" class="files-grid">
+          <div v-else-if="viewMode === 'grid'" class="files-grid">
             <div
               v-for="file in displayFiles"
               :key="file.id || file.name"
@@ -975,6 +982,50 @@ function handleFileClick(file) {
 .file-summary {
   font-size: 12px;
   color: #64748b;
+}
+
+.folder-loading-tag {
+  font-size: 11px;
+  color: var(--mi-orange);
+  background: #fff7ed;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+.loading-skeleton-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 16px;
+}
+
+.skeleton-shimmer {
+  width: 140px;
+  height: 8px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #fed7aa 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* 网格卡片 */

@@ -36,7 +36,29 @@ button {
   font-family: inherit;
 }
 
-/* 滚动条 */
+/* 全局平滑微交互动效 */
+button, .tab-btn, .file-card, .media-item, .table-row {
+  transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s cubic-bezier(0.2, 0, 0, 1), background-color 0.15s ease;
+}
+
+button:active, .file-card:active, .media-item:active {
+  transform: scale(0.98);
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.custom-modal, .media-viewer-box, .explorer-modal {
+  animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

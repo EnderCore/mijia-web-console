@@ -852,40 +852,59 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 5. /api/files 全盘文件与目录钻取 (严格对接 NAS 真实 search 接口)
+  // 5. /api/files 全盘文件与目录钻取 (升级版：子目录直接使用 filemgr/list_directory，避免 search 接口索引未就绪导致的空白)
   if (pathname === "/api/files") {
     try {
       await ensureReady();
       const reqKeyword = parsedUrl.searchParams.get("keyword") || "";
       const reqParent = parsedUrl.searchParams.get("parent") || "";
 
-      let searchBody = {};
+      let rawList = [];
+      let totalSize = 0;
+
       if (reqParent) {
-        // 列目录：type 必须是 "directory"（官方 searchDirList 的取值），
-        // 用 "all" 会走成全盘关键词搜索，语义完全不同。
-        searchBody = {
-          type: "directory",
-          page: { size: 500, token: "" },
-          options: {
-            option: ["path"],
-            path: {
-              parent: reqParent,
-              recursion: false
-            }
-          },
-          show_dotfile: false
-        };
+        // 列子目录：优先使用官方官方同款的 list_directory（直读底层文件系统，即时性强，不依赖后台异步索引）
+        try {
+          const listBody = {
+            path: { parent: reqParent.replace(/\/$/, ""), recursion: false },
+            page: { size: 1000, token: "" },
+            order: { basis: "name", desc: false },
+            simple: false
+          };
+          const dirResp = await callNasAPI("/cgi-bin/luci/filemgr/list_directory", listBody);
+          if (dirResp.data?.code === 0 && Array.isArray(dirResp.data?.data?.files)) {
+            rawList = dirResp.data.data.files;
+            totalSize = dirResp.data.data.page?.total_size || rawList.length;
+          } else {
+            throw new Error(dirResp.data?.result || "list_directory 未返回文件");
+          }
+        } catch (dirErr) {
+          console.warn("[gateway] list_directory 降级回退到 search:", dirErr.message);
+          // 回退兜底：如果 list_directory 失败，再尝试 search
+          const searchBody = {
+            type: "directory",
+            page: { size: 500, token: "" },
+            options: {
+              option: ["path"],
+              path: { parent: reqParent, recursion: false }
+            },
+            show_dotfile: false
+          };
+          const resp = await callNasAPI("/cgi-bin/luci/filemgr/search", searchBody);
+          rawList = resp.data?.data?.files || resp.data?.files || [];
+          totalSize = resp.data?.data?.page?.total_size || rawList.length;
+        }
       } else {
-        // 根视图：全盘关键词搜索
-        searchBody = {
+        // 根视图或全盘全局关键词搜索
+        const searchBody = {
           keyword: reqKeyword,
           type: "all",
           page: { size: 200, token: "" }
         };
+        const resp = await callNasAPI("/cgi-bin/luci/filemgr/search", searchBody);
+        rawList = resp.data?.data?.files || resp.data?.files || [];
+        totalSize = resp.data?.data?.page?.total_size || rawList.length;
       }
-
-      const resp = await callNasAPI("/cgi-bin/luci/filemgr/search", searchBody);
-      const rawList = resp.data?.data?.files || resp.data?.files || [];
 
       // 转换为前端统一标准格式
       const mapped = rawList.map((f, idx) => {
@@ -897,7 +916,7 @@ const server = http.createServer(async (req, res) => {
         return {
           id: `nas-${idx}`,
           name: f.name,
-          parent: f.parent || "",
+          parent: f.parent || reqParent || "",
           path: fullPath,
           size: parseInt(f.size || 0, 10),
           modified_time: parseInt(f.modified_time || Date.now(), 10),
@@ -920,7 +939,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({
         status: "ok",
         currentParent: reqParent,
-        total: resp.data?.data?.page?.total_size || mapped.length,
+        total: totalSize || mapped.length,
         data: { files: mapped }
       }));
     } catch (e) {

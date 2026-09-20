@@ -283,17 +283,34 @@
       </div>
     </div>
 
-    <!-- 媒体大图与视频播放器弹窗 -->
-    <div v-if="activeMedia" class="media-viewer-backdrop" @click.self="activeMedia = null">
-      <div class="media-viewer-box">
+    <!-- 媒体大图与视频播放器弹窗 (升级版：支持无级滚轮缩放、手势拖拽平移、旋转与全屏控制) -->
+    <div v-if="activeMedia" class="media-viewer-backdrop" @click.self="closeActiveMedia">
+      <div class="media-viewer-box" :class="{ 'fullscreen-box': isImageViewerFullscreen }">
         <div class="viewer-header">
           <div class="vh-title">
             <span class="icon">{{ activeMedia.type === 'video' ? '🎬' : '🖼️' }}</span>
             <span class="name">{{ activeMedia.name }}</span>
           </div>
-          <button class="close-viewer" @click="activeMedia = null">✕</button>
+
+          <!-- 图片专用交互工具条 -->
+          <div v-if="activeMedia.type !== 'video'" class="viewer-toolbar">
+            <button class="tb-btn" @click="zoomImage(0.25)" title="放大">+</button>
+            <span class="zoom-text">{{ Math.round(imageScale * 100) }}%</span>
+            <button class="tb-btn" @click="zoomImage(-0.25)" title="缩小">-</button>
+            <button class="tb-btn" @click="resetImageTransform" title="适应屏幕 / 1:1">⟲</button>
+            <button class="tb-btn" @click="rotateImage" title="向右旋转 90 度">↻</button>
+            <button class="tb-btn" @click="isImageViewerFullscreen = !isImageViewerFullscreen" title="切换全屏">
+              {{ isImageViewerFullscreen ? '⤦' : '⤢' }}
+            </button>
+          </div>
+
+          <button class="close-viewer" @click="closeActiveMedia">✕</button>
         </div>
-        <div class="viewer-body">
+        <div 
+          class="viewer-body" 
+          @wheel.prevent="handleImageWheel"
+          @mousedown="handleImageMouseDown"
+        >
           <video
             v-if="activeMedia.type === 'video'"
             :src="activeMedia.videoUrl"
@@ -306,6 +323,13 @@
             :src="activeMedia.previewUrl || activeMedia.thumbnail"
             :alt="activeMedia.name"
             class="viewer-img"
+            :class="{ 'is-dragging': isDraggingImage }"
+            :style="{
+              transform: `translate(${imageTranslate.x}px, ${imageTranslate.y}px) scale(${imageScale}) rotate(${imageRotation}deg)`,
+              cursor: imageScale > 1 ? (isDraggingImage ? 'grabbing' : 'grab') : 'default'
+            }"
+            @dblclick="toggleImageDoubleZoom"
+            draggable="false"
           />
         </div>
         <div class="viewer-footer">
@@ -350,6 +374,75 @@ const activeVideo = ref(null);
 const activeDoc = ref(null);
 const activeDialog = ref(null);
 const activeMedia = ref(null);
+
+// 图片查看器高级交互 (缩放、平移拖拽、旋转、全屏)
+const imageScale = ref(1);
+const imageTranslate = ref({ x: 0, y: 0 });
+const imageRotation = ref(0);
+const isImageViewerFullscreen = ref(false);
+const isDraggingImage = ref(false);
+let startDragPos = { x: 0, y: 0 };
+let currentTranslateStart = { x: 0, y: 0 };
+
+function resetImageTransform() {
+  imageScale.value = 1;
+  imageTranslate.value = { x: 0, y: 0 };
+  imageRotation.value = 0;
+}
+
+function zoomImage(delta) {
+  imageScale.value = Math.max(0.2, Math.min(6, +(imageScale.value + delta).toFixed(2)));
+}
+
+function rotateImage() {
+  imageRotation.value = (imageRotation.value + 90) % 360;
+}
+
+function handleImageWheel(e) {
+  if (activeMedia.value?.type === 'video') return;
+  const delta = e.deltaY < 0 ? 0.2 : -0.2;
+  zoomImage(delta);
+}
+
+function toggleImageDoubleZoom() {
+  if (imageScale.value === 1) {
+    imageScale.value = 2.5;
+  } else {
+    resetImageTransform();
+  }
+}
+
+function handleImageMouseDown(e) {
+  if (imageScale.value <= 1) return;
+  isDraggingImage.value = true;
+  startDragPos = { x: e.clientX, y: e.clientY };
+  currentTranslateStart = { ...imageTranslate.value };
+
+  const handleMouseMove = (ev) => {
+    if (!isDraggingImage.value) return;
+    const dx = ev.clientX - startDragPos.x;
+    const dy = ev.clientY - startDragPos.y;
+    imageTranslate.value = {
+      x: currentTranslateStart.x + dx,
+      y: currentTranslateStart.y + dy
+    };
+  };
+
+  const handleMouseUp = () => {
+    isDraggingImage.value = false;
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
+}
+
+function closeActiveMedia() {
+  activeMedia.value = null;
+  resetImageTransform();
+  isImageViewerFullscreen.value = false;
+}
 
 const statusInfo = ref({
   did: '',
@@ -911,6 +1004,8 @@ function handleLaunchApp(app) {
 
 // 预览多媒体大图与视频
 function handlePreviewMedia(file) {
+  resetImageTransform();
+  isImageViewerFullscreen.value = false;
   if (file.type === 'video') {
     handlePlayVideo(file);
   } else if (file.type === 'photo') {
@@ -1491,22 +1586,73 @@ onUnmounted(() => {
 
 .media-viewer-box {
   width: 80vw;
-  max-width: 1000px;
+  max-width: 1080px;
   background: #1e293b;
   border-radius: var(--mi-radius-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.media-viewer-box.fullscreen-box {
+  width: 98vw;
+  max-width: 98vw;
+  height: 96vh;
+}
+
+.media-viewer-box.fullscreen-box .viewer-body {
+  max-height: 84vh;
+  min-height: 84vh;
+}
+
+.media-viewer-box.fullscreen-box .viewer-img,
+.media-viewer-box.fullscreen-box .viewer-video {
+  max-height: 84vh;
 }
 
 .viewer-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 20px;
+  padding: 12px 20px;
   background: #0f172a;
   color: white;
+}
+
+.viewer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.tb-btn {
+  background: transparent;
+  color: #e2e8f0;
+  border: none;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tb-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.zoom-text {
+  font-size: 11px;
+  font-family: monospace;
+  color: #ff8533;
+  min-width: 40px;
+  text-align: center;
 }
 
 .vh-title {
@@ -1531,14 +1677,23 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: #000000;
-  min-height: 400px;
-  max-height: 65vh;
+  min-height: 440px;
+  max-height: 68vh;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
 }
 
 .viewer-img {
   max-width: 100%;
-  max-height: 65vh;
+  max-height: 68vh;
   object-fit: contain;
+  transition: transform 0.15s ease-out;
+  transform-origin: center center;
+}
+
+.viewer-img.is-dragging {
+  transition: none;
 }
 
 .viewer-video {
