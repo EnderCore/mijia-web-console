@@ -37,6 +37,12 @@
         <span>文件管理</span>
       </button>
 
+      <!-- 个性化与视觉风格设置入口 -->
+      <button class="theme-nav-btn" @click="$emit('open-theme')" title="个性化外观与主题设置">
+        <span class="btn-icon">🎨</span>
+        <span>外观</span>
+      </button>
+
       <div class="stat-pill" v-if="urlPort">
         <span class="label">内网映射</span>
         <span class="val">127.0.0.1:{{ urlPort }}</span>
@@ -61,7 +67,7 @@ defineProps({
   loading: { type: Boolean, default: false }
 });
 
-defineEmits(['refresh', 'open-explorer']);
+defineEmits(['refresh', 'open-explorer', 'open-theme']);
 
 const { masked, toggle } = usePrivacy();
 
@@ -84,6 +90,27 @@ function mask(v, kind) {
   font-weight: 700;
   box-shadow: 0 4px 12px rgba(255, 103, 0, 0.25);
   transition: all 0.2s;
+}
+
+.theme-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--mi-card-bg);
+  border: 1px solid var(--mi-border);
+  color: var(--mi-text-main);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s;
+}
+
+.theme-nav-btn:hover {
+  border-color: var(--mi-orange);
+  color: var(--mi-orange);
+  transform: translateY(-1px);
 }
 
 .mask-btn {

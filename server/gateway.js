@@ -25,8 +25,50 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
-const { execSync } = require("child_process");
+const { execSync, spawn } = require("child_process");
 const { MqttBridge, mqttAvailable } = require("./mqtt-bridge");
+
+// HEIC/HEIF 自动转码支持（通过本地 Python + pillow-heif 透明转换为 JPEG）
+const HEIC_SCRIPT = path.join(__dirname, "heic-converter.py");
+
+// 自动检测拥有 pillow_heif 支持的最佳 Python 解释器
+let cachedPythonBin = null;
+function getPythonBin() {
+  if (cachedPythonBin) return cachedPythonBin;
+  const candidates = [
+    "C:\\Users\\Ender_ShadowElf\\AppData\\Local\\Programs\\Python\\Python39\\python.exe",
+    "C:\\Users\\Ender_ShadowElf\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+    "C:\\Users\\Ender_ShadowElf\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+    "C:\\Users\\Ender_ShadowElf\\anaconda3\\python.exe",
+    "python"
+  ];
+  for (const bin of candidates) {
+    try {
+      execSync(`"${bin}" -c "import pillow_heif"`, { stdio: "ignore" });
+      cachedPythonBin = bin;
+      return bin;
+    } catch (e) {}
+  }
+  cachedPythonBin = "python";
+  return cachedPythonBin;
+}
+
+function transcodeHeicToJpg(inputHeicPath, outputJpgPath, maxDim = 0) {
+  return new Promise((resolve, reject) => {
+    const pyBin = getPythonBin();
+    const py = spawn(pyBin, [HEIC_SCRIPT, inputHeicPath, outputJpgPath, String(maxDim)]);
+    let errOutput = "";
+    py.stderr.on("data", (d) => { errOutput += d.toString(); });
+    py.on("close", (code) => {
+      if (code === 0 && fs.existsSync(outputJpgPath) && fs.statSync(outputJpgPath).size > 0) {
+        resolve(true);
+      } else {
+        reject(new Error(`Transcode exited with code ${code}: ${errOutput}`));
+      }
+    });
+    py.on("error", (err) => reject(err));
+  });
+}
 
 // 端口可用环境变量覆盖，便于本地验证时不干扰已运行的实例
 const SERVER_PORT = parseInt(process.env.GATEWAY_PORT || "8090", 10);
@@ -996,20 +1038,46 @@ const server = http.createServer(async (req, res) => {
 
     // 优先命中本地磁盘缓存 (秒级响应)
     if (fs.existsSync(localCachedFile)) {
-      res.writeHead(200, {
-        "Content-Type": imageMimeFor(filePath),
-        "Cache-Control": "public, max-age=604800, immutable",
-        "X-Cache-Lookup": "HIT"
-      });
-      fs.createReadStream(localCachedFile).pipe(res);
-      return;
+      // 检查缓存内容是否为未转码的原始 HEIC（历史遗留问题处理）
+      const isHeic = /\.(heic|heif)$/i.test(filePath);
+      let isValidJpg = true;
+      if (isHeic) {
+        try {
+          const fd = fs.openSync(localCachedFile, "r");
+          const buf = Buffer.alloc(16);
+          fs.readSync(fd, buf, 0, 16, 0);
+          fs.closeSync(fd);
+          // 若文件头包含 ftyp/heic/mif1 说明是旧的原装 HEIC 文件，不能直接发给浏览器，需删掉重新转码
+          if (buf.includes("ftyp") || buf.includes("heic") || buf.includes("mif1")) {
+            isValidJpg = false;
+            try { fs.unlinkSync(localCachedFile); } catch (e) {}
+          }
+        } catch (e) {
+          isValidJpg = false;
+        }
+      }
+
+      if (isValidJpg) {
+        res.writeHead(200, {
+          "Content-Type": isHeic ? "image/jpeg" : imageMimeFor(filePath),
+          "Cache-Control": "public, max-age=604800, immutable",
+          "X-Cache-Lookup": "HIT"
+        });
+        fs.createReadStream(localCachedFile).pipe(res);
+        return;
+      }
     }
 
     const sendSvgDirectly = () => {
-      const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
-      const rawSvg = generateSvgThumbnailRaw(path.basename(filePath) || "Thumbnail",
-        isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8",
-        isVideo ? "🎬" : "🖼️");
+      const isVideo = /\.(mp4|mkv|mov|avi|ts|flv|webm|rmvb)$/i.test(filePath);
+      const isHeic = /\.(heic|heif)$/i.test(filePath);
+      const title = path.basename(filePath) || "Thumbnail";
+      const rawSvg = generateSvgThumbnailRaw(
+        title,
+        isVideo ? "#f97316" : (isHeic ? "#8b5cf6" : "#3b82f6"),
+        isVideo ? "#c2410c" : (isHeic ? "#6d28d9" : "#1d4ed8"),
+        isVideo ? "🎬" : (isHeic ? "📸" : "🖼️")
+      );
       res.writeHead(200, {
         "Content-Type": "image/svg+xml; charset=utf-8",
         "Cache-Control": "public, max-age=604800, immutable"
@@ -1022,6 +1090,50 @@ const server = http.createServer(async (req, res) => {
     if (/\.(mp4|mkv|mov|avi|ts|flv|webm|rmvb)$/i.test(filePath)) {
       sendSvgDirectly();
       return;
+    }
+
+    // Apple HEIC 原生格式：拉取原图后利用本地 Python + pillow-heif 自动转码为 JPEG 缓存并秒级直显！
+    const isHeic = /\.(heic|heif)$/i.test(filePath);
+    if (isHeic) {
+      await acquireThumbnailSlot();
+      try {
+        await ensureReady();
+        const rawHeicTemp = path.join(CACHE_DIR, `temp_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.heic`);
+        const dav = await callWebdav("GET", filePath, {}, null, 40000);
+        if (dav.statusCode !== 200) {
+          releaseThumbnailSlot();
+          dav.resume();
+          sendSvgDirectly();
+          return;
+        }
+
+        const rawStream = fs.createWriteStream(rawHeicTemp);
+        await new Promise((resolve, reject) => {
+          dav.pipe(rawStream);
+          dav.on("end", resolve);
+          dav.on("error", reject);
+        });
+
+        // 根据前端请求尺寸转码 (small: 400px, preview: 2560px, 原生不传: 1920px)
+        const maxDim = size === "small" ? 400 : 2560;
+        await transcodeHeicToJpg(rawHeicTemp, localCachedFile, maxDim);
+
+        try { fs.unlinkSync(rawHeicTemp); } catch (e) {}
+        releaseThumbnailSlot();
+
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=604800, immutable",
+          "X-Cache-Lookup": "TRANSCODED"
+        });
+        fs.createReadStream(localCachedFile).pipe(res);
+        return;
+      } catch (err) {
+        releaseThumbnailSlot();
+        console.warn("[gateway] HEIC 转码失败，降级回退到矢量卡片:", err.message);
+        sendSvgDirectly();
+        return;
+      }
     }
 
     // 图片：经 WebDAV 取原图并落盘缓存 (受并发槽位保护，避免拥堵隧道)

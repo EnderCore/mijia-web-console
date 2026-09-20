@@ -1,5 +1,22 @@
 <template>
-  <div class="app-root">
+  <div class="app-root" :class="{ 'has-custom-bg': currentWallpaperUrl || currentTheme.bgEnabled }">
+    <!-- 客户端本地全景动态壁纸图层 (与 NAS 完全隔离) -->
+    <div
+      v-if="currentWallpaperUrl || currentTheme.bgEnabled"
+      class="app-bg-layer"
+      :style="{
+        backgroundImage: currentWallpaperUrl ? `url(${currentWallpaperUrl})` : 'none',
+        filter: `brightness(var(--mi-bg-brightness)) blur(var(--mi-bg-blur))`,
+        opacity: `var(--mi-bg-opacity)`
+      }"
+    ></div>
+    <!-- 壁纸调色遮罩层 -->
+    <div
+      v-if="currentWallpaperUrl || currentTheme.bgEnabled"
+      class="app-bg-overlay"
+      :style="{ background: currentTheme.bgTint }"
+    ></div>
+
     <!-- 顶部状态栏与导航 -->
     <TopHeader
       :device-name="deviceName"
@@ -9,6 +26,7 @@
       :loading="refreshing"
       @refresh="loadAllData"
       @open-explorer="showFileExplorer = true"
+      @open-theme="showThemeModal = true"
     />
 
     <!-- 主界面内容区 (仿米家卡片式极简布局) -->
@@ -87,6 +105,8 @@
         </span>
         <span class="dot">·</span>
         <span>缩略图缓存: 本地磁盘 (server/cache)</span>
+        <span class="dot">·</span>
+        <span class="power-tag font-mono">Power by: Ender_Core</span>
       </div>
     </footer>
 
@@ -124,6 +144,12 @@
       :visible="showDocViewer"
       :file="activeDoc"
       @close="showDocViewer = false"
+    />
+
+    <!-- 个性化与视觉风格设置模态框 (纯客户端本地保存) -->
+    <ThemeSettingsModal
+      :visible="showThemeModal"
+      @close="showThemeModal = false"
     />
 
     <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
@@ -353,11 +379,20 @@ import MediaCenterModal from './components/MediaCenterModal.vue';
 import FileExplorerModal from './components/FileExplorerModal.vue';
 import VideoPlayerModal from './components/VideoPlayerModal.vue';
 import DocumentViewerModal from './components/DocumentViewerModal.vue';
+import ThemeSettingsModal from './components/ThemeSettingsModal.vue';
 import { getCachedData, setCachedData } from './utils/cache.js';
 import { usePrivacy, maskValue } from './utils/privacy.js';
+import {
+  currentTheme,
+  currentWallpaperUrl,
+  loadStoredWallpaper,
+  loadThemeConfig,
+  applyTheme
+} from './utils/theme.js';
 
 // 状态定义
 const deviceName = ref('小米智能存储 (NAS)');
+const showThemeModal = ref(false);
 
 // 隐私遮罩：masked 为共享单例，maskValue 内部依赖它，所以模板里调用 mask() 会自动重算
 const { masked: privacyMasked } = usePrivacy();
@@ -437,6 +472,12 @@ function handleImageMouseDown(e) {
   window.addEventListener('mousemove', handleMouseMove);
   window.addEventListener('mouseup', handleMouseUp);
 }
+
+const isHeicMedia = computed(() => {
+  const name = activeMedia.value?.name || '';
+  const pathStr = activeMedia.value?.path || '';
+  return /\.(heic|heif)$/i.test(name) || /\.(heic|heif)$/i.test(pathStr);
+});
 
 function closeActiveMedia() {
   activeMedia.value = null;
@@ -1027,6 +1068,11 @@ function handlePreviewDoc(file) {
 
 let timer = null;
 onMounted(async () => {
+  // 加载本地专属主题配置与壁纸
+  loadThemeConfig();
+  await loadStoredWallpaper();
+  applyTheme();
+
   // 清除旧版本遗留的模拟假数据缓存，强制直通真实 NAS
   if (typeof window !== 'undefined') {
     localStorage.removeItem('mijia_cache_files');
@@ -1050,6 +1096,46 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 100vh;
   background-color: var(--mi-bg);
+  position: relative;
+}
+
+/* 客户端本地动态壁纸背景层 */
+.app-bg-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+  pointer-events: none;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.app-bg-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.top-header, .main-content, .app-footer {
+  position: relative;
+  z-index: 2;
+}
+
+.power-tag {
+  color: var(--mi-orange);
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(255, 103, 0, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
 }
 
 .main-content {
@@ -1694,6 +1780,68 @@ onUnmounted(() => {
 
 .viewer-img.is-dragging {
   transition: none;
+}
+
+/* HEIC 专属预览卡片 */
+.heic-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%);
+  border-radius: var(--mi-radius-md);
+  color: white;
+  text-align: center;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  margin: 20px;
+}
+
+.heic-icon {
+  font-size: 54px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 12px rgba(139, 92, 246, 0.4));
+}
+
+.heic-preview-box h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #c4b5fd;
+}
+
+.heic-preview-box p {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.heic-tip {
+  font-size: 12px;
+  color: #64748b;
+  max-width: 420px;
+  margin-bottom: 20px !important;
+}
+
+.heic-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #8b5cf6;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+}
+
+.heic-dl-btn:hover {
+  background: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
 }
 
 .viewer-video {

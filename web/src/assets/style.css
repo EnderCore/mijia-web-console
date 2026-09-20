@@ -5,6 +5,10 @@
   --mi-green: #2ecc71;
   --mi-bg: #f5f6f8;
   --mi-card-bg: #ffffff;
+  --mi-card-border: #eaedf1;
+  --mi-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  --mi-backdrop-blur: none;
+  --mi-backdrop-saturate: 100%;
   --mi-text-main: #1f2329;
   --mi-text-sub: #8f959e;
   --mi-border: #eaedf1;
@@ -13,6 +17,72 @@
   --mi-radius-sm: 8px;
   --mi-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
   --mi-shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.08);
+
+  /* 背景图滤镜变量 */
+  --mi-bg-brightness: 100%;
+  --mi-bg-blur: 0px;
+  --mi-bg-opacity: 1;
+  --mi-bg-tint: rgba(245, 246, 248, 0.6);
+}
+
+/* 云母与亚克力玻璃拟态主题 (Mica Glassmorphism) */
+html.theme-mica {
+  --mi-text-main: #0f172a;
+  --mi-text-sub: #475569;
+}
+
+html.theme-mica .top-header,
+html.theme-mica .storage-card,
+html.theme-mica .chart-card,
+html.theme-mica .grid-card,
+html.theme-mica .recent-card,
+html.theme-mica .app-footer,
+html.theme-mica .custom-modal,
+html.theme-mica .explorer-modal {
+  background: var(--mi-card-bg) !important;
+  backdrop-filter: blur(var(--mi-backdrop-blur)) saturate(var(--mi-backdrop-saturate)) !important;
+  -webkit-backdrop-filter: blur(var(--mi-backdrop-blur)) saturate(var(--mi-backdrop-saturate)) !important;
+  border: 1px solid var(--mi-card-border) !important;
+  box-shadow: var(--mi-card-shadow) !important;
+}
+
+/* 构成主义先锋艺术主题 (Constructivism UI) */
+html.theme-constructivism {
+  --mi-radius-lg: 0px !important;
+  --mi-radius-md: 0px !important;
+  --mi-radius-sm: 0px !important;
+  --mi-text-main: #09090b !important;
+  --mi-text-sub: #52525b !important;
+  --mi-border: #18181b !important;
+}
+
+html.theme-constructivism .top-header,
+html.theme-constructivism .storage-card,
+html.theme-constructivism .chart-card,
+html.theme-constructivism .grid-card,
+html.theme-constructivism .recent-card,
+html.theme-constructivism .app-footer,
+html.theme-constructivism .custom-modal,
+html.theme-constructivism .explorer-modal,
+html.theme-constructivism .file-card,
+html.theme-constructivism .column-box {
+  background: var(--mi-card-bg) !important;
+  border: 2px solid #18181b !important;
+  border-radius: 0px !important;
+  box-shadow: var(--mi-card-shadow) !important;
+}
+
+html.theme-constructivism button {
+  border-radius: 0px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+html.theme-constructivism .power-tag {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  padding: 2px 6px !important;
 }
 
 * {
