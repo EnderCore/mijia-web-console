@@ -1137,6 +1137,23 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") {
+    console.log("");
+    console.log("[!] 端口 " + SERVER_PORT + " 已被占用，网关未启动。");
+    console.log("    通常是上一次运行的网关进程还没有退出。");
+    console.log("");
+    console.log("    排查与处理（任选其一）：");
+    console.log("      1) 直接访问 http://127.0.0.1:" + SERVER_PORT + " —— 若能看到控制台，说明旧实例仍在正常工作。");
+    console.log("      2) 结束占用端口的进程后重新启动：");
+    console.log("         powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort " + SERVER_PORT + " -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }\"");
+    console.log("");
+    process.exit(1);
+  }
+  console.error("[!] 网关启动失败:", e.message);
+  process.exit(1);
+});
+
 server.listen(SERVER_PORT, "127.0.0.1", async () => {
   console.log("=======================================================");
   console.log(`[√] 米家 Web 控制台中继服务已就绪: http://127.0.0.1:${SERVER_PORT}`);
@@ -1145,6 +1162,7 @@ server.listen(SERVER_PORT, "127.0.0.1", async () => {
   try {
     await ensureReady();
     console.log(`[√] 成功捕获穿透通道 127.0.0.1:${activeUrlPort} 并完成 Token 鉴权就绪！`);
+    console.log(`[√] WebDAV 文件读写通道: 127.0.0.1:${activeWebdavPort} (上传/下载/删除已就绪)`);
   } catch (e) {
     console.log(`[*] 会话提醒: ${e.message} (服务已进入智能演示/离线待命模式)`);
   }
