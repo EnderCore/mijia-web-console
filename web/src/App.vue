@@ -71,7 +71,7 @@
       <div class="footer-inner">
         <span>米家 Xiaomi Smart Storage Web 控制台 · 硬件级双盘镜像</span>
         <span class="dot">·</span>
-        <span>设备 DID: {{ statusInfo.did || '未连接' }}</span>
+        <span>设备 DID: {{ mask(statusInfo.did, 'did') || '未连接' }}</span>
         <span class="dot">·</span>
         <span :class="isOnline ? 'text-green' : 'text-orange'">
           {{ isOnline ? 'P2P 直通 (127.0.0.1:' + statusInfo.urlPort + ')' : '未连接官方客户端' }}
@@ -233,7 +233,7 @@
         <div class="viewer-footer">
           <span>分辨率: {{ activeMedia.dim || '未上报' }}</span>
           <span>文件大小: {{ formatSize(activeMedia.size) }}</span>
-          <span>路径: {{ activeMedia.path || statusInfo.dataRoot || '未上报' }}</span>
+          <span>路径: {{ mask(activeMedia.path || statusInfo.dataRoot, 'path') || '未上报' }}</span>
         </div>
       </div>
     </div>
@@ -252,9 +252,16 @@ import FileExplorerModal from './components/FileExplorerModal.vue';
 import VideoPlayerModal from './components/VideoPlayerModal.vue';
 import DocumentViewerModal from './components/DocumentViewerModal.vue';
 import { getCachedData, setCachedData } from './utils/cache.js';
+import { usePrivacy, maskValue } from './utils/privacy.js';
 
 // 状态定义
 const deviceName = ref('小米智能存储 (NAS)');
+
+// 隐私遮罩：masked 为共享单例，maskValue 内部依赖它，所以模板里调用 mask() 会自动重算
+const { masked: privacyMasked } = usePrivacy();
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 const isOnline = ref(false);
 const refreshing = ref(false);
 const showMediaModal = ref(false);
@@ -502,7 +509,7 @@ function handleLaunchApp(app) {
         .filter(f => f.type === 'photo' || f.name.includes('.png') || f.name.includes('.jpg') || f.name.includes('.heic'))
         .map(f => ({
           name: f.name,
-          sub: `${f.parent || statusInfo.value.dataRoot || ''} · 照片`,
+          sub: `${mask(f.parent || statusInfo.value.dataRoot, 'path')} · 照片`,
           detail: formatSize(f.size)
         }))
     };
@@ -514,7 +521,7 @@ function handleLaunchApp(app) {
       icon: '👥',
       desc: '官方 LuCI 仅开放 user_list 只读接口，未提供成员增删与权限修改能力。',
       items: storageData.value.uid
-        ? [{ name: `当前登录账号 (UID: ${storageData.value.uid})`, sub: '来自 NAS user_list 接口', detail: '管理员' }]
+        ? [{ name: `当前登录账号 (UID: ${mask(storageData.value.uid, 'uid')})`, sub: '来自 NAS user_list 接口', detail: '管理员' }]
         : []
     };
   } else if (app.name === '系统设置') {

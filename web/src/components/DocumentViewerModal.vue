@@ -56,7 +56,7 @@
 
       <!-- 底部路径说明栏 -->
       <div class="doc-footer">
-        <span>存储物理路径: <code class="code-path">{{ file?.path }}</code></span>
+        <span>存储物理路径: <code class="code-path">{{ mask(file?.path, 'path') }}</code></span>
         <span>NAS Range 流直连</span>
       </div>
     </div>
@@ -65,6 +65,11 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { maskValue } from '../utils/privacy.js';
+
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 
 const props = defineProps({
   visible: { type: Boolean, default: false },

@@ -49,7 +49,9 @@
           <span class="label">设备型号 / 序列号</span>
           <span class="val font-mono">
             {{ (systemInfo.system && systemInfo.system.model) || '未上报' }}
-            <template v-if="systemInfo.system && systemInfo.system.serial"> · {{ systemInfo.system.serial }}</template>
+            <template v-if="systemInfo.system && systemInfo.system.serial">
+              · {{ mask(systemInfo.system.serial, 'serial') }}
+            </template>
           </span>
         </div>
         <div class="info-row">
@@ -59,9 +61,11 @@
         <div class="info-row">
           <span class="label">网卡与链接</span>
           <span class="val">
-            <template v-if="systemInfo.network && systemInfo.network.ip">{{ systemInfo.network.ip }}</template>
+            <template v-if="systemInfo.network && systemInfo.network.ip">{{ mask(systemInfo.network.ip, 'ip') }}</template>
             <template v-else>未上报</template>
-            <template v-if="systemInfo.network && systemInfo.network.mac"> · {{ systemInfo.network.mac }}</template>
+            <template v-if="systemInfo.network && systemInfo.network.mac">
+              · {{ mask(systemInfo.network.mac, 'mac') }}
+            </template>
           </span>
         </div>
         <div class="info-row">
@@ -113,6 +117,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { maskValue } from '../utils/privacy.js';
 
 const props = defineProps({
   currentRtt: { type: Number, default: 0 },
@@ -133,6 +138,11 @@ const props = defineProps({
 // 未上报的指标显示为"未上报"，不要假装是 0% 或某个具体读数
 function fmtPct(v) {
   return v == null ? '未上报' : v + '%';
+}
+
+// 脱敏：maskValue 内部读共享的 masked 状态，开关切换时模板会自动重算
+function mask(v, kind) {
+  return maskValue(v, kind);
 }
 
 const fanSpeedText = computed(() => {

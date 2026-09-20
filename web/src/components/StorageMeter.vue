@@ -74,7 +74,7 @@
             <span :class="tempClass(d.temperature)">{{ d.temperature == null ? '温度未上报' : d.temperature + '°C' }}</span>
             <span v-if="d.runTimeHours != null">· 通电 {{ formatHours(d.runTimeHours) }}</span>
           </div>
-          <div v-if="d.serial" class="disk-serial font-mono">S/N {{ d.serial }}</div>
+          <div v-if="d.serial" class="disk-serial font-mono">S/N {{ mask(d.serial, 'serial') }}</div>
         </div>
 
         <!-- 官方 API 只提供上面这些字段；写明边界，避免以为是页面没做全 -->
@@ -89,6 +89,12 @@
 
 <script setup>
 import { computed } from 'vue';
+import { maskValue } from '../utils/privacy.js';
+
+// 脱敏：maskValue 内部读共享的 masked 状态，开关切换时模板会自动重算
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 
 const props = defineProps({
   usedBytes: { type: Number, default: 0 },

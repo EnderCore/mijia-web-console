@@ -55,7 +55,7 @@
         <div class="footer-left">
           <span>模式: <b>{{ currentQuality.sourceType }}</b></span>
           <span class="dot">·</span>
-          <span>路径: <code class="path-code">{{ video?.path || video?.name }}</code></span>
+          <span>路径: <code class="path-code">{{ mask(video?.path || video?.name, 'path') }}</code></span>
         </div>
         <div class="footer-right">
           <span v-if="resolutionError" class="res-warn">{{ resolutionError }}</span>
@@ -67,6 +67,11 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { maskValue } from '../utils/privacy.js';
+
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 

@@ -15,11 +15,22 @@
             {{ isOnline ? '在线' : '离线' }}
           </span>
         </div>
-        <p class="did-info">DID: {{ did || '正在探测设备...' }} · 穿透模式</p>
+        <p class="did-info">DID: {{ mask(did, 'did') || '正在探测设备...' }} · 穿透模式</p>
       </div>
     </div>
 
     <div class="header-right">
+      <!-- 隐私遮罩：截图分享前隐藏 DID / 序列号 / IP / 路径等标识 -->
+      <button
+        class="mask-btn"
+        :class="{ active: masked }"
+        :title="masked ? '当前已脱敏，点击显示真实信息' : '点击隐藏 IP / 序列号 / DID 等敏感信息'"
+        @click="toggle"
+      >
+        <span class="btn-icon">{{ masked ? '🙈' : '👁️' }}</span>
+        <span>{{ masked ? '已脱敏' : '脱敏' }}</span>
+      </button>
+
       <!-- 文件管理器快捷入口 -->
       <button class="explorer-nav-btn" @click="$emit('open-explorer')">
         <span class="btn-icon">📁</span>
@@ -40,6 +51,8 @@
 </template>
 
 <script setup>
+import { usePrivacy, maskValue } from '../utils/privacy.js';
+
 defineProps({
   deviceName: { type: String, default: '小米智能存储' },
   isOnline: { type: Boolean, default: false },
@@ -49,6 +62,13 @@ defineProps({
 });
 
 defineEmits(['refresh', 'open-explorer']);
+
+const { masked, toggle } = usePrivacy();
+
+// maskValue 内部读 masked，所以模板里调用它会随开关自动重算
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 </script>
 
 <style scoped>
@@ -64,6 +84,32 @@ defineEmits(['refresh', 'open-explorer']);
   font-weight: 700;
   box-shadow: 0 4px 12px rgba(255, 103, 0, 0.25);
   transition: all 0.2s;
+}
+
+.mask-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f5f6f8;
+  color: var(--mi-text-sub);
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.mask-btn:hover {
+  background: #eaedf1;
+  color: var(--mi-text-main);
+}
+
+/* 开启脱敏时用醒目色，避免用户忘了自己开着遮罩 */
+.mask-btn.active {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
 }
 
 .explorer-nav-btn:hover {

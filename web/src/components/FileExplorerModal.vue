@@ -6,7 +6,7 @@
         <div class="header-left">
           <span class="icon">📁</span>
           <h4>全功能文件管理器</h4>
-          <span class="path-badge">{{ currentPath }}</span>
+          <span class="path-badge">{{ mask(currentPath, 'path') }}</span>
         </div>
 
         <div class="header-right">
@@ -204,6 +204,13 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { maskValue } from '../utils/privacy.js';
+
+// 路径脱敏只掩盖 /home/u<UID> 的账号段，目录结构保留，
+// 否则面包屑与路径展示会失去导航参考意义。
+function mask(v, kind) {
+  return maskValue(v, kind);
+}
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
