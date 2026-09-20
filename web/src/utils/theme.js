@@ -91,7 +91,9 @@ export const PRESETS = {
 
 // 响应式主题配置
 export const currentTheme = reactive({
-  ...PRESETS.default
+  ...PRESETS.default,
+  // 暗色调模式: 'light' | 'dark' | 'auto'
+  colorMode: 'light'
 });
 
 // 壁纸 Data URL 缓存
@@ -209,6 +211,20 @@ export function applyTheme() {
   const root = document.documentElement;
   const t = currentTheme;
 
+  // 判断是否为暗色调
+  let isDark = false;
+  if (t.colorMode === 'dark') {
+    isDark = true;
+  } else if (t.colorMode === 'auto') {
+    isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  if (isDark) {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
+
   // 基础颜色与圆角
   root.style.setProperty('--mi-orange', t.accentColor);
   root.style.setProperty('--mi-radius-md', t.borderRadius);
@@ -217,18 +233,20 @@ export function applyTheme() {
 
   // 云母磨砂与卡片半透明参数
   if (t.id === 'default' && !t.bgEnabled) {
-    root.style.setProperty('--mi-card-bg', '#ffffff');
+    root.style.setProperty('--mi-card-bg', isDark ? '#1e293b' : '#ffffff');
     root.style.setProperty('--mi-backdrop-blur', 'none');
     root.style.setProperty('--mi-backdrop-saturate', '100%');
-    root.style.setProperty('--mi-card-border', '#eaedf1');
-    root.style.setProperty('--mi-card-shadow', '0 4px 20px rgba(0, 0, 0, 0.04)');
+    root.style.setProperty('--mi-card-border', isDark ? '#334155' : '#eaedf1');
+    root.style.setProperty('--mi-card-shadow', isDark ? '0 4px 20px rgba(0, 0, 0, 0.4)' : '0 4px 20px rgba(0, 0, 0, 0.04)');
     root.classList.remove('theme-constructivism', 'theme-mica');
   } else {
     // 启用磨砂玻璃或自定义透明度
     const opacityDec = (t.cardOpacity / 100).toFixed(2);
     let cardBgVal = t.cardBg;
-    if (cardBgVal.startsWith('#')) {
-      // 转成带有透明度的 rgba
+    if (isDark && t.id === 'mica') {
+      // 暗夜云母卡片：深邃石板蓝黑半透
+      cardBgVal = `rgba(15, 23, 42, ${opacityDec})`;
+    } else if (cardBgVal.startsWith('#')) {
       const r = parseInt(cardBgVal.slice(1, 3), 16) || 255;
       const g = parseInt(cardBgVal.slice(3, 5), 16) || 255;
       const b = parseInt(cardBgVal.slice(5, 7), 16) || 255;
@@ -237,7 +255,7 @@ export function applyTheme() {
     root.style.setProperty('--mi-card-bg', cardBgVal);
     root.style.setProperty('--mi-backdrop-blur', `${t.cardBlur}px`);
     root.style.setProperty('--mi-backdrop-saturate', `${t.cardSaturate}%`);
-    root.style.setProperty('--mi-card-border', t.cardBorder);
+    root.style.setProperty('--mi-card-border', isDark ? (t.id === 'mica' ? 'rgba(255, 255, 255, 0.12)' : '#27272a') : t.cardBorder);
     root.style.setProperty('--mi-card-shadow', t.cardShadow);
 
     // 控件/按钮专属磨砂参数注入

@@ -260,6 +260,166 @@ html.theme-constructivism .power-tag {
   border-left: 4px solid #d92027 !important;
 }
 
+/* 全局暗色调系统适配 (Dark Mode System) */
+html.dark {
+  --mi-bg: #0b0f19 !important;
+  --mi-card-bg: #151d2f !important;
+  --mi-text-main: #f1f5f9 !important;
+  --mi-text-sub: #94a3b8 !important;
+  --mi-border: #1e293b !important;
+  --mi-card-border: #1e293b !important;
+  --mi-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  --mi-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+  --mi-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+html.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .top-header,
+html.dark .app-footer,
+html.dark .custom-modal,
+html.dark .explorer-modal {
+  background: #111827 !important;
+  border-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .mask-btn,
+html.dark .theme-nav-btn {
+  background: #1f293d !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+
+html.dark .storage-card,
+html.dark .chart-card,
+html.dark .grid-card,
+html.dark .recent-card,
+html.dark .file-card {
+  background: #131b2e !important;
+  border-color: #1e293b !important;
+}
+
+html.dark .offline-banner {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+html.dark .offline-banner .banner-text strong {
+  color: #f8fafc !important;
+}
+
+html.dark .offline-banner .banner-text span {
+  color: #94a3b8 !important;
+}
+
+html.dark .set-row {
+  background: #0f172a !important;
+  border-color: #1e293b !important;
+}
+
+html.dark .set-row span {
+  color: #94a3b8 !important;
+}
+
+html.dark .set-row b {
+  color: #f8fafc !important;
+}
+
+/* 暗色调下的暗夜云母磨砂模式 (Dark Mica) */
+html.dark.theme-mica-controls-only .top-header,
+html.dark.theme-mica-controls-only .storage-card,
+html.dark.theme-mica-controls-only .chart-card,
+html.dark.theme-mica-controls-only .grid-card,
+html.dark.theme-mica-controls-only .recent-card,
+html.dark.theme-mica-controls-only .app-footer,
+html.dark.theme-mica-controls-only .custom-modal,
+html.dark.theme-mica-controls-only .explorer-modal {
+  background: rgba(11, 15, 25, var(--mi-card-opacity, 0.6)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark.theme-mica-controls-only button,
+html.dark.theme-mica-controls-only .tab-btn,
+html.dark.theme-mica-controls-only .mask-btn,
+html.dark.theme-mica-controls-only .theme-nav-btn,
+html.dark.theme-mica-controls-only .stat-pill,
+html.dark.theme-mica-controls-only .app-item,
+html.dark.theme-mica-controls-only .media-item,
+html.dark.theme-mica-controls-only .file-card,
+html.dark.theme-mica-controls-only .io-btn,
+html.dark.theme-mica-controls-only .action-btn,
+html.dark.theme-mica-controls-only .preset-card {
+  background: rgba(30, 41, 59, var(--mi-control-opacity, 0.7)) !important;
+  backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #f8fafc !important;
+}
+
+/* 暗色调下的暗夜苏俄构成主义模式 (Dark Constructivism / Midnight Soviet Avant-garde) */
+html.dark.theme-constructivism {
+  --mi-bg: #09090b !important;
+  --mi-card-bg: #121215 !important;
+  --mi-text-main: #f4f4f5 !important;
+  --mi-text-sub: #a1a1aa !important;
+  --mi-border: #27272a !important;
+  --mi-orange: #ef4444 !important;
+}
+
+html.dark.theme-constructivism body {
+  background-color: #09090b !important;
+  background-image: 
+    radial-gradient(#3f3f46 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px) !important;
+}
+
+html.dark.theme-constructivism .top-header,
+html.dark.theme-constructivism .storage-card,
+html.dark.theme-constructivism .chart-card,
+html.dark.theme-constructivism .grid-card,
+html.dark.theme-constructivism .recent-card,
+html.dark.theme-constructivism .app-footer,
+html.dark.theme-constructivism .custom-modal,
+html.dark.theme-constructivism .explorer-modal,
+html.dark.theme-constructivism .file-card,
+html.dark.theme-constructivism .column-box {
+  background: #121215 !important;
+  border: 3px solid #27272a !important;
+  box-shadow: 6px 6px 0px #000000 !important;
+}
+
+html.dark.theme-constructivism .gazette-headline,
+html.dark.theme-constructivism .gazette-meta-strip {
+  background: #121215 !important;
+  border-color: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+html.dark.theme-constructivism .gazette-headline h2 {
+  color: #f4f4f5 !important;
+}
+
+html.dark.theme-constructivism button,
+html.dark.theme-constructivism .mask-btn,
+html.dark.theme-constructivism .theme-nav-btn,
+html.dark.theme-constructivism .tab-btn,
+html.dark.theme-constructivism .stat-pill {
+  background: #18181b !important;
+  color: #f4f4f5 !important;
+  border-color: #3f3f46 !important;
+  box-shadow: 3px 3px 0px #000000 !important;
+}
+
+html.dark.theme-constructivism .card-header h3,
+html.dark.theme-constructivism .section-hdr h3,
+html.dark.theme-constructivism .device-name {
+  color: #f4f4f5 !important;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

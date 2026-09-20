@@ -10,6 +10,37 @@
       </div>
 
       <div class="modal-cnt theme-content">
+        <!-- 明暗色调切换 -->
+        <div class="section-box">
+          <div class="section-title">
+            <span>🌓 色彩模式 (Dark / Light Mode)</span>
+            <span class="section-tag">全主题无缝适配暗色</span>
+          </div>
+          <div class="mode-switcher-row">
+            <button
+              class="mode-btn"
+              :class="{ active: currentTheme.colorMode === 'light' }"
+              @click="setColorMode('light')"
+            >
+              <span>☀️ 浅色明亮</span>
+            </button>
+            <button
+              class="mode-btn"
+              :class="{ active: currentTheme.colorMode === 'dark' }"
+              @click="setColorMode('dark')"
+            >
+              <span>🌙 深邃暗色</span>
+            </button>
+            <button
+              class="mode-btn"
+              :class="{ active: currentTheme.colorMode === 'auto' }"
+              @click="setColorMode('auto')"
+            >
+              <span>💻 跟随系统</span>
+            </button>
+          </div>
+        </div>
+
         <!-- 预设选择器 -->
         <div class="section-box">
           <div class="section-title">
@@ -266,6 +297,12 @@ async function handleClearBg() {
   await clearWallpaper();
 }
 
+function setColorMode(mode) {
+  currentTheme.colorMode = mode;
+  applyTheme();
+  saveThemeConfig();
+}
+
 // 切换预设
 function applyPreset(key) {
   switchPreset(key);
@@ -342,6 +379,39 @@ async function handleImportFile(e) {
   font-size: 11px;
   font-weight: normal;
   color: var(--mi-text-sub);
+}
+
+/* 模式选择按钮 */
+.mode-switcher-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: white;
+  border: 2px solid var(--mi-border);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mi-text-main);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  border-color: var(--mi-orange);
+}
+
+.mode-btn.active {
+  border-color: var(--mi-orange);
+  background: rgba(255, 103, 0, 0.08);
+  color: var(--mi-orange);
 }
 
 /* 预设卡片网格 */
