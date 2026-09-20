@@ -26,16 +26,14 @@ if not exist "%~dp0web\node_modules" (
     )
 )
 
-REM Build frontend if dist is missing
-if not exist "%~dp0web\dist\index.html" (
-    echo [*] Building frontend bundle...
-    cd /d "%~dp0web"
-    call npm run build
-    if %errorlevel% neq 0 (
-        echo [ERROR] Frontend build failed
-        pause
-        exit /b 1
-    )
+REM Always build frontend so source changes are included
+echo [*] Building frontend bundle...
+cd /d "%~dp0web"
+call npm run build
+if %errorlevel% neq 0 (
+    echo [ERROR] Frontend build failed
+    pause
+    exit /b 1
 )
 
 cd /d "%~dp0server"
