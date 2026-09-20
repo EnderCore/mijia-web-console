@@ -107,6 +107,30 @@ const sseClients = new Set();
 let latestMeminfo = null;   // meminfo/update 是唯一内存数据源（无 HTTP 接口）
 let mqttBridge = null;
 
+// 缩略图下载并发信号量控制（最多允许 4 个原图 WebDAV 下载并发，防止瞬间挤爆 P2P 隧道）
+let activeThumbnailJobs = 0;
+const thumbnailQueue = [];
+
+function acquireThumbnailSlot() {
+  return new Promise(resolve => {
+    if (activeThumbnailJobs < 4) {
+      activeThumbnailJobs++;
+      resolve();
+    } else {
+      thumbnailQueue.push(resolve);
+    }
+  });
+}
+
+function releaseThumbnailSlot() {
+  activeThumbnailJobs--;
+  if (thumbnailQueue.length > 0) {
+    const next = thumbnailQueue.shift();
+    activeThumbnailJobs++;
+    next();
+  }
+}
+
 function sseBroadcast(topic, data) {
   const frame = `data: ${JSON.stringify({ topic, data, ts: Date.now() })}\n\n`;
   for (const res of sseClients) {
@@ -1026,31 +1050,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-// 缩略图下载并发信号量控制（最多允许 4 个原图 WebDAV 下载并发，防止瞬间挤爆 P2P 隧道）
-let activeThumbnailJobs = 0;
-const thumbnailQueue = [];
-
-function acquireThumbnailSlot() {
-  return new Promise(resolve => {
-    if (activeThumbnailJobs < 4) {
-      activeThumbnailJobs++;
-      resolve();
-    } else {
-      thumbnailQueue.push(resolve);
-    }
-  });
-}
-
-function releaseThumbnailSlot() {
-  activeThumbnailJobs--;
-  if (thumbnailQueue.length > 0) {
-    const next = thumbnailQueue.shift();
-    activeThumbnailJobs++;
-    next();
-  }
-}
-
-// 7. /api/image 代理 NAS 原厂图标资源 (带本地缓存)
+  // 7. /api/image 代理 NAS 原厂图标资源 (带本地缓存)
   if (pathname === "/api/image") {
     const src = parsedUrl.searchParams.get("src");
     if (!src) {
