@@ -27,18 +27,12 @@ const crypto = require("crypto");
 const os = require("os");
 const { execSync } = require("child_process");
 
-const SERVER_PORT = 8090;
+// 端口可用环境变量覆盖，便于本地验证时不干扰已运行的实例
+const SERVER_PORT = parseInt(process.env.GATEWAY_PORT || "8090", 10);
 
-// ============ 硬件规格（按你的实际设备修改）============
-// NAS 的 LuCI API 不提供内存/磁盘总量查询接口，仅上报已用容量，
-// 因此总容量与内存规格需在此声明为静态规格值。运行时的占用率/温度无从获取，
-// 一律返回 null，前端显示"未上报"。
-const HARDWARE = {
-  // 内存总容量（字节）。小米智能存储双盘位有 2GB / 4GB 两种版本。
-  totalMemoryBytes: parseInt(process.env.NAS_TOTAL_MEMORY || "", 10) || 4 * 1024 * 1024 * 1024,
-  // 存储池格式化后可用总容量（字节）。8TB 双盘镜像约 7.28 TiB。
-  totalPoolBytes: parseInt(process.env.NAS_TOTAL_POOL || "", 10) || 8001583472640,
-};
+// 缓存 TTL：硬件状态查询要跑 4 个 NAS 接口，前端会轮询，做几秒缓存避免打爆隧道
+const HARDWARE_CACHE_MS = 5000;
+const hwCache = { data: null, at: 0 };
 
 // 1. 初始化本地磁盘高速缓存目录 (用于在弱网/离线环境下秒级命中缩略图和图标)
 const CACHE_DIR = path.join(__dirname, "cache");
@@ -107,40 +101,137 @@ let lastTokenTime = 0;
 let rttHistory = [];
 let webdavCreds = null;
 
-// 硬件规格 (NAS 未提供硬件监控 API，以下仅为按机型规格声明的静态规格)
-// 已实测确认：官方 LuCI 未开放 CPU/内存/温度/磁盘查询接口，
-// 且 /cgi-bin/luci/home/get_profile 恒定返回 1003 参数错误。
-// 因此：只有 totalMemoryBytes 是用户在 HARDWARE 里声明的规格，
-// 其余运行时指标（CPU 占用、温度、内存占用）一律返回 null，
-// 前端须显示"未上报"，不得用估算值冒充实时读数。
+// ============ 硬件与存储信息（全部来自 NAS 真实接口）============
+//
+// 逆向结论（已实机验证）：
+//   /cgi-bin/luci/system/get_device_status  -> CPU 占用/温度、风扇转速与模式、UPS、
+//                                              网卡 IP/掩码/网关/DNS、上下行速率、
+//                                              MAC/序列号/机型、磁盘用量汇总
+//   /cgi-bin/luci/storage/get_storage_info  -> 每块硬盘的型号、序列号、槽位、
+//                                              温度、健康状态、运行时长、容量
+//   /cgi-bin/luci/filemgr/get_pool_info     -> 存储池总量/已用、池类型、WebDAV 凭据
+//   /cgi-bin/luci/system/get_system_version -> 固件版本与升级通道
+//
+// 注意：这些接口都在 NAS 的 Web UI 侧（官方客户端的 dist 页面调用），
+// 不在早期逆向得到的「主进程 LuCI 接口」清单里，所以之前误判为"官方未开放"。
+
+// 从 "53℃" / "7%" / "32 KB/s" 这类带单位字符串里取数值
+function parseLeadingNumber(v) {
+  if (v === null || v === undefined) return null;
+  const m = String(v).match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+
+// CPU 型号无法从接口读到（get_device_status 只给占用率与温度），
+// 按机型标注而不猜测具体芯片型号。
 function getSystemHardwareMetrics() {
   return {
-    estimated: true,
-    model: "Xiaomi Smart Storage (Dual-Bay)",
-    cpu: {
-      model: "Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)",
-      cores: 4,
-      usagePercent: null,
-      temp: null
-    },
-    memory: {
-      totalBytes: HARDWARE.totalMemoryBytes,
-      usedBytes: null,
-      freeBytes: null,
-      usagePercent: null
-    },
-    network: {
-      linkSpeed: "2.5 Gbps",
-      ip: null,
-      mac: null
-    },
-    storagePool: {
-      name: "pool0",
-      type: "Dual-Backup (双盘镜像防护)",
-      usedBytes: null,
-      totalBytes: HARDWARE.totalPoolBytes
-    }
+    estimated: false,
+    model: null,
+    cpu: { usagePercent: null, temp: null },
+    fan: { rpm: null, mode: null },
+    memory: { totalBytes: null, usedBytes: null, usagePercent: null },
+    network: { ip: null, netmask: null, gateway: null, dns: [], mac: null, upload: null, download: null },
+    storagePool: { name: "存储空间", usedBytes: null, totalBytes: null, diskNum: null },
+    disks: [],
+    ups: { enabled: null, health: null },
+    system: { version: null, channel: null, power: null },
   };
+}
+
+// 拉取并合并真实硬件信息；任一接口失败只让对应字段保持 null
+async function fetchHardwareInfo() {
+  const info = getSystemHardwareMetrics();
+
+  const [statusRes, storageRes, poolRes, verRes] = await Promise.allSettled([
+    callNasAPI("/cgi-bin/luci/system/get_device_status", {}),
+    callNasAPI("/cgi-bin/luci/storage/get_storage_info", {}),
+    callNasAPI("/cgi-bin/luci/filemgr/get_pool_info", {}),
+    callNasAPI("/cgi-bin/luci/system/get_system_version", {}),
+  ]);
+
+  const pick = (r) => (r.status === "fulfilled" ? r.value?.data?.data || null : null);
+
+  const st = pick(statusRes);
+  if (st) {
+    if (st.cpu) {
+      info.cpu.usagePercent = parseLeadingNumber(st.cpu.use);
+      info.cpu.temp = parseLeadingNumber(st.cpu.temp);
+    }
+    if (st.fan) {
+      info.fan.rpm = parseLeadingNumber(st.fan.rpm);
+      info.fan.mode = st.fan.mode || null;
+    }
+    if (st.deviceinfo) {
+      info.network.mac = st.deviceinfo.MAC || null;
+      info.system.model = st.deviceinfo.model || null;
+      info.system.serial = st.deviceinfo.SN || null;
+    }
+    if (st.net) {
+      info.network.upload = st.net.upload || null;
+      info.network.download = st.net.download || null;
+      const v4 = st.net.ipv4 || {};
+      info.network.ip = v4.address || null;
+      info.network.netmask = v4.netmask || null;
+      info.network.gateway = v4.gateway || null;
+      info.network.dns = Array.isArray(v4.DNS) ? v4.DNS : [];
+    }
+    if (st.disk) {
+      info.storagePool.usedBytes = parseInt(st.disk.usedsize || 0, 10) || null;
+      info.storagePool.totalBytes = parseInt(st.disk.totalsize || 0, 10) || null;
+      info.storagePool.unusedBytes = parseInt(st.disk.unusedsize || 0, 10) || null;
+      info.storagePool.hibernate = st.disk.hibernate || null;
+    }
+    if (st.ups) {
+      info.ups.enabled = st.ups.status === "enable";
+      info.ups.health = st.ups.health || null;
+    }
+  }
+
+  const storage = pick(storageRes);
+  if (storage) {
+    const pools = Array.isArray(storage.internal_pool) ? storage.internal_pool : [];
+    const p0 = pools[0];
+    if (p0) {
+      info.storagePool.name = p0.pool_name || info.storagePool.name;
+      info.storagePool.poolType = p0.pool_type || null;
+      info.storagePool.diskNum = parseInt(p0.disk_num || 0, 10) || null;
+      info.storagePool.status = p0.status || null;
+      if (!info.storagePool.totalBytes) info.storagePool.totalBytes = parseInt(p0.total_size || 0, 10) || null;
+      if (!info.storagePool.usedBytes) info.storagePool.usedBytes = parseInt(p0.used_size || 0, 10) || null;
+      info.disks = (Array.isArray(p0.disks) ? p0.disks : []).map((d) => ({
+        dev: d.dev || "",
+        slot: d.slot ?? null,
+        type: d.type || "",
+        model: d.model || "",
+        serial: d.serial || "",
+        temperature: parseLeadingNumber(d.temperature),
+        health: d.health || "",
+        state: d.state || "",
+        runTimeHours: parseInt(d.run_time || 0, 10) || null,
+        totalBytes: parseInt(d.total_size || 0, 10) || null,
+        usedBytes: parseInt(d.used_size || 0, 10) || null,
+      }));
+    }
+  }
+
+  const pool = pick(poolRes);
+  if (pool && Array.isArray(pool.internal_pool) && pool.internal_pool[0]) {
+    const p0 = pool.internal_pool[0];
+    if (!info.storagePool.totalBytes) info.storagePool.totalBytes = parseInt(p0.total_size || 0, 10) || null;
+    if (!info.storagePool.usedBytes) info.storagePool.usedBytes = parseInt(p0.used_size || 0, 10) || null;
+    info.storagePool.poolType = info.storagePool.poolType || p0.pool_type || null;
+    info.externalPoolCount = Array.isArray(pool.external_pool) ? pool.external_pool.length : 0;
+  }
+
+  const ver = pick(verRes);
+  if (ver) {
+    info.system.version = ver.version || null;
+    info.system.channel = ver.channel || null;
+    info.system.autoUpgrade = !!ver.autoupgrade;
+  }
+
+  return info;
 }
 
 // 小程序与应用列表兜底数据（NAS 未返回 get_app_list 时展示）
@@ -481,21 +572,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 2. /api/system 硬件与系统信息 (CPU核心/负载/温度/内存/运行时间/存储池)
+  // 2. /api/system 硬件与系统信息（全部来自 NAS 真实接口，见 fetchHardwareInfo）
   if (pathname === "/api/system") {
     try {
-      // 尝试调用官方设备信息接口
-      const profile = await callNasAPI("/cgi-bin/luci/home/get_profile", {});
-      const metrics = getSystemHardwareMetrics();
-      if (profile && profile.data) {
-        metrics.nasProfile = profile.data;
+      await ensureReady();
+      // 前端每 8 秒轮询，这里做几秒缓存，避免同一批查询反复打到隧道上
+      const now = Date.now();
+      if (!hwCache.data || now - hwCache.at > HARDWARE_CACHE_MS) {
+        hwCache.data = await fetchHardwareInfo();
+        hwCache.at = now;
       }
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ status: "ok", data: metrics }));
+      res.end(JSON.stringify({ status: "ok", data: hwCache.data }));
     } catch (e) {
-      // 优雅降级为高保真硬件参数
+      // 连不上就如实报告，字段留 null 由前端显示"未上报"，不填假数据
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ status: "ok", data: getSystemHardwareMetrics() }));
+      res.end(JSON.stringify({ status: "error", message: e.message, data: getSystemHardwareMetrics() }));
+    }
+    return;
+  }
+
+  // 2.1 /api/storage 每块硬盘的型号/序列号/温度/健康状态/运行时长
+  if (pathname === "/api/storage") {
+    try {
+      await ensureReady();
+      const resp = await callNasAPI("/cgi-bin/luci/storage/get_storage_info", {});
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "ok", data: resp.data?.data || {} }));
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message, data: {} }));
     }
     return;
   }
@@ -529,8 +635,14 @@ const server = http.createServer(async (req, res) => {
   // 4. /api/users 用户配额与容量
   if (pathname === "/api/users") {
     try {
-      const resp = await callNasAPI("/cgi-bin/luci/usermanager/user_list", {});
-      const ulist = resp.data?.data?.list || resp.data?.list || resp.data?.users || [];
+      const [userResp, poolResp] = await Promise.allSettled([
+        callNasAPI("/cgi-bin/luci/usermanager/user_list", {}),
+        callNasAPI("/cgi-bin/luci/filemgr/get_pool_info", {}),
+      ]);
+
+      const ulist = userResp.status === "fulfilled"
+        ? (userResp.value.data?.data?.list || userResp.value.data?.list || userResp.value.data?.users || [])
+        : [];
 
       if (!ulist.length) {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -538,13 +650,26 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // NAS 通常把 total_size 上报为 0（配额不做限制），此时回退到 HARDWARE.totalPoolBytes
-      // 并按"估算"标注，前端会显示为估算值而不是用户配额。
+      // user_list 的 total_size 恒为 0（该接口不报配额），
+      // 真实总容量改用 filemgr/get_pool_info 的存储池数据补齐。
+      const pool = poolResp.status === "fulfilled" ? (poolResp.value.data?.data || {}) : {};
+      const pool0 = Array.isArray(pool.internal_pool) ? pool.internal_pool[0] : null;
+
       const u = ulist[0];
       const reported = parseInt(u.total_size || 0, 10);
-      u.total_size = reported > 0 ? reported : HARDWARE.totalPoolBytes;
-      u.total_size_is_estimated = !(reported > 0);
-      u.pool_type = "Dual-Backup (双盘镜像防护)";
+      const poolTotal = pool0 ? parseInt(pool0.total_size || 0, 10) : 0;
+      const poolUsed = pool0 ? parseInt(pool0.used_size || 0, 10) : 0;
+
+      // 总容量优先用存储池真实值；都取不到时保持 0，由前端显示"未上报"
+      u.total_size = reported > 0 ? reported : (poolTotal || 0);
+      u.total_size_is_estimated = false;
+      u.total_size_source = reported > 0 ? "user_list" : (poolTotal > 0 ? "pool_info" : null);
+
+      // 已用容量：用户配额口径 vs 整池口径都给出，前端按需要选
+      if (!u.used_size && poolUsed) u.used_size = poolUsed;
+      u.pool_used_size = poolUsed || null;
+      u.pool_type = pool0?.pool_type || null;
+      u.pool_name = pool0?.pool_name || "存储空间";
 
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ status: "ok", data: { users: ulist, list: ulist } }));

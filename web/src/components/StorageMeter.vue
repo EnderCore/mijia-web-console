@@ -17,10 +17,10 @@
         </div>
         <p class="sub-desc">
           <template v-if="totalBytes > 0">
-            已用存储容量 · 格式化总可用约 {{ totalDisplay }}
-            <span v-if="totalIsEstimated" class="estim-tag">总容量按机型规格推算，NAS 未上报</span>
+            存储池已用 · 格式化总可用约 {{ totalDisplay }}
+            <span v-if="personalUsedBytes" class="personal-tag">个人空间 {{ formatGB(personalUsedBytes) }} GB</span>
           </template>
-          <template v-else>已用存储容量 · 总容量未上报</template>
+          <template v-else>总容量未上报</template>
         </p>
       </div>
 
@@ -35,23 +35,46 @@
         </div>
       </div>
 
-      <!-- 盘位与阵列配置详情 -->
+      <!-- 盘位与阵列配置详情（数据来自 NAS storage/get_storage_info） -->
       <div class="details-grid">
         <div class="detail-item">
           <span class="d-label">存储池</span>
-          <span class="d-val font-mono">pool0</span>
+          <span class="d-val font-mono">{{ poolName }}<template v-if="poolType"> ({{ poolType }})</template></span>
         </div>
         <div class="detail-item">
           <span class="d-label">阵列保护等级</span>
-          <span class="d-val text-green">Dual-Backup (双盘镜像冗余)</span>
+          <span class="d-val" :class="healthClass">{{ poolStatusText }}</span>
         </div>
         <div class="detail-item">
           <span class="d-label">文件系统</span>
-          <span class="d-val font-mono">Btrfs (支持秒级快照/防腐)</span>
+          <span class="d-val font-mono">Btrfs (支持秒级快照)</span>
         </div>
         <div class="detail-item">
-          <span class="d-label">盘位健康 / 温度</span>
-          <span class="d-val text-muted">未上报 (LuCI 无对应接口)</span>
+          <span class="d-label">磁盘数量</span>
+          <span class="d-val">{{ disks.length ? disks.length + ' 块' : '未上报' }}</span>
+        </div>
+      </div>
+
+      <!-- 逐块硬盘明细（真实型号/序列号/温度/健康/运行时长） -->
+      <div v-if="disks.length" class="disk-list">
+        <div v-for="d in disks" :key="d.dev || d.slot" class="disk-row">
+          <div class="disk-head">
+            <span class="disk-slot">盘位 {{ d.slot ?? '-' }}</span>
+            <span class="disk-dev font-mono">{{ d.dev }}</span>
+            <span class="disk-health" :class="d.health === 'normal' ? 'ok' : 'warn'">
+              {{ healthText(d.health) }}
+            </span>
+          </div>
+          <div class="disk-model font-mono" :title="d.model">{{ d.model || '型号未上报' }}</div>
+          <div class="disk-meta">
+            <span>{{ d.type || 'HDD' }}</span>
+            <span>·</span>
+            <span>{{ diskSize(d.totalBytes) }}</span>
+            <span>·</span>
+            <span :class="tempClass(d.temperature)">{{ d.temperature == null ? '温度未上报' : d.temperature + '°C' }}</span>
+            <span v-if="d.runTimeHours != null">· 通电 {{ formatHours(d.runTimeHours) }}</span>
+          </div>
+          <div v-if="d.serial" class="disk-serial font-mono">S/N {{ d.serial }}</div>
         </div>
       </div>
     </div>
@@ -64,10 +87,15 @@ import { computed } from 'vue';
 const props = defineProps({
   usedBytes: { type: Number, default: 0 },
   totalBytes: { type: Number, default: 0 },
-  // 总容量是否为按机型规格推算（NAS 未上报配额时）
+  // 当前账号个人配额用量（user_list.used_size），与整池用量是两个口径
+  personalUsedBytes: { type: Number, default: 0 },
   totalIsEstimated: { type: Boolean, default: false },
   uid: { type: String, default: '' },
-  poolType: { type: String, default: '存储池 pool0 (双盘镜像)' }
+  poolType: { type: String, default: '' },
+  poolName: { type: String, default: '存储空间' },
+  poolStatus: { type: String, default: '' },
+  // 每块硬盘的明细，来自 storage/get_storage_info
+  disks: { type: Array, default: () => [] }
 });
 
 function formatGB(bytes) {
@@ -91,6 +119,38 @@ const freeDisplay = computed(() => {
   const tb = free / (1024 * 1024 * 1024 * 1024);
   return `${tb.toFixed(2)} TB`;
 });
+
+const poolStatusText = computed(() => {
+  if (!props.poolStatus) return '未上报';
+  const map = { normal: '正常 (RAID 冗余保护)', degraded: '降级', rebuilding: '重建中', error: '异常' };
+  return map[props.poolStatus] || props.poolStatus;
+});
+
+const healthClass = computed(() => (props.poolStatus === 'normal' ? 'text-green' : 'text-warn'));
+
+function healthText(h) {
+  const map = { normal: '健康', warning: '警告', error: '异常', abnormal: '异常' };
+  return map[h] || (h || '未上报');
+}
+
+function tempClass(t) {
+  if (t == null) return '';
+  if (t >= 55) return 'text-warn';
+  if (t >= 45) return 'text-caution';
+  return 'text-green';
+}
+
+function diskSize(bytes) {
+  if (!bytes) return '容量未上报';
+  const tb = bytes / 1024 ** 4;
+  return tb >= 1 ? `${tb.toFixed(2)} TB` : `${(bytes / 1024 ** 3).toFixed(0)} GB`;
+}
+
+function formatHours(h) {
+  if (h == null) return '';
+  if (h < 24) return `${h} 小时`;
+  return `${Math.floor(h / 24)} 天`;
+}
 </script>
 
 <style scoped>
@@ -225,8 +285,94 @@ const freeDisplay = computed(() => {
   color: #10b981;
 }
 
+.text-warn {
+  color: #dc2626;
+}
+
+.text-caution {
+  color: #d97706;
+}
+
 .text-muted {
   color: var(--mi-text-sub);
+}
+
+/* 逐块硬盘明细 */
+.disk-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.disk-row {
+  background: #f8fafc;
+  border: 1px solid var(--mi-border);
+  border-radius: var(--mi-radius-md);
+  padding: 10px 12px;
+}
+
+.disk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.disk-slot {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mi-orange);
+}
+
+.disk-dev {
+  font-size: 11px;
+  color: var(--mi-text-sub);
+}
+
+.disk-health {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.disk-health.ok {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.disk-health.warn {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.disk-model {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mi-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--mi-text-sub);
+  margin-top: 3px;
+}
+
+.disk-serial {
+  font-size: 10px;
+  color: var(--mi-text-sub);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .estim-tag {
@@ -236,6 +382,17 @@ const freeDisplay = computed(() => {
   color: #b45309;
   background: #fffbeb;
   border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+.personal-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  color: #0369a1;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
   border-radius: 8px;
   padding: 1px 6px;
 }

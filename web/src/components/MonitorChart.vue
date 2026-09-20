@@ -10,39 +10,35 @@
       </span>
     </div>
 
-    <!-- NAS 未开放硬件监控接口，CPU/内存读数无法实时获取，须如实标注 -->
-    <div v-if="systemInfo.estimated" class="estim-note">
-      官方 LuCI 未开放 CPU / 内存 / 温度查询接口，下方硬件读数按机型规格推算，非实时监控值。
-    </div>
-
+    <!-- 数据来自 NAS system/get_device_status，实时值；取不到的字段显示"未上报" -->
     <div class="monitor-body">
-      <!-- 硬件核心指标：CPU 与 内存仪表盘 -->
+      <!-- 硬件核心指标：CPU 与 风扇 -->
       <div class="hardware-meters">
         <div class="hw-item">
           <div class="hw-top">
             <span class="hw-name">CPU 使用率</span>
-            <span class="hw-val text-muted">{{ fmtPct(systemInfo.cpu.usagePercent) }}</span>
+            <span class="hw-val text-muted">{{ fmtPct(systemInfo.cpu && systemInfo.cpu.usagePercent) }}</span>
           </div>
           <div class="hw-bar">
-            <div class="hw-bar-fill orange" :style="{ width: (systemInfo.cpu.usagePercent || 0) + '%' }"></div>
+            <div class="hw-bar-fill orange" :style="{ width: ((systemInfo.cpu && systemInfo.cpu.usagePercent) || 0) + '%' }"></div>
           </div>
           <div class="hw-sub">
-            <span>{{ systemInfo.cpu.cores }} 核心 Cortex-A55</span>
-            <span>{{ systemInfo.cpu.temp == null ? '温度未上报' : systemInfo.cpu.temp + ' °C' }}</span>
+            <span>温度 {{ systemInfo.cpu && systemInfo.cpu.temp != null ? systemInfo.cpu.temp + ' °C' : '未上报' }}</span>
+            <span>{{ systemInfo.system && systemInfo.system.model ? systemInfo.system.model : '' }}</span>
           </div>
         </div>
 
         <div class="hw-item">
           <div class="hw-top">
-            <span class="hw-name">RAM 内存</span>
-            <span class="hw-val text-blue">{{ fmtPct(systemInfo.memory.usagePercent) }}</span>
+            <span class="hw-name">风扇</span>
+            <span class="hw-val text-blue">{{ fanSpeedText }}</span>
           </div>
           <div class="hw-bar">
-            <div class="hw-bar-fill blue" :style="{ width: (systemInfo.memory.usagePercent || 0) + '%' }"></div>
+            <div class="hw-bar-fill blue" :style="{ width: fanBarWidth }"></div>
           </div>
           <div class="hw-sub">
-            <span>已用 {{ fmtMB(systemInfo.memory.usedBytes) }}</span>
-            <span>总计 {{ fmtMB(systemInfo.memory.totalBytes) }} MB</span>
+            <span>模式 {{ fanModeText }}</span>
+            <span>{{ systemInfo.ups && systemInfo.ups.enabled ? 'UPS 已接入' : '' }}</span>
           </div>
         </div>
       </div>
@@ -50,15 +46,29 @@
       <!-- 链路状态 -->
       <div class="tunnel-info">
         <div class="info-row">
-          <span class="label">处理器型号</span>
-          <span class="val font-mono">{{ systemInfo.cpu.model }}</span>
+          <span class="label">设备型号 / 序列号</span>
+          <span class="val font-mono">
+            {{ (systemInfo.system && systemInfo.system.model) || '未上报' }}
+            <template v-if="systemInfo.system && systemInfo.system.serial"> · {{ systemInfo.system.serial }}</template>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="label">固件版本</span>
+          <span class="val font-mono">{{ (systemInfo.system && systemInfo.system.version) || '未上报' }}</span>
         </div>
         <div class="info-row">
           <span class="label">网卡与链接</span>
           <span class="val">
-            {{ systemInfo.network.linkSpeed }} 全双工
-            <template v-if="systemInfo.network.ip"> ({{ systemInfo.network.ip }})</template>
-            <template v-else> · IP 未上报</template>
+            <template v-if="systemInfo.network && systemInfo.network.ip">{{ systemInfo.network.ip }}</template>
+            <template v-else>未上报</template>
+            <template v-if="systemInfo.network && systemInfo.network.mac"> · {{ systemInfo.network.mac }}</template>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="label">实时速率</span>
+          <span class="val">
+            ↑ {{ (systemInfo.network && systemInfo.network.upload) || '未上报' }}
+            · ↓ {{ (systemInfo.network && systemInfo.network.download) || '未上报' }}
           </span>
         </div>
         <div class="info-row">
@@ -105,17 +115,17 @@
 import { computed } from 'vue';
 
 const props = defineProps({
-  currentRtt: { type: Number, default: 12 },
+  currentRtt: { type: Number, default: 0 },
   history: { type: Array, default: () => [] },
   tunnelGateway: { type: String, default: '' },
   systemInfo: {
     type: Object,
     default: () => ({
-      estimated: true,
-      model: 'Xiaomi Smart Storage',
-      cpu: { model: 'Realtek RTD1619B Quad-Core', cores: 4, usagePercent: null, temp: null },
-      memory: { totalBytes: 4294967296, usedBytes: null, usagePercent: null },
-      network: { linkSpeed: '2.5 Gbps', ip: null }
+      cpu: { usagePercent: null, temp: null },
+      fan: { rpm: null, mode: null },
+      network: { ip: null, mac: null, upload: null, download: null },
+      system: { model: null, serial: null, version: null },
+      ups: { enabled: null }
     })
   }
 });
@@ -125,10 +135,25 @@ function fmtPct(v) {
   return v == null ? '未上报' : v + '%';
 }
 
-function fmtMB(bytes) {
-  if (bytes == null) return '未上报';
-  return Math.round(bytes / (1024 * 1024)) + ' MB';
-}
+const fanSpeedText = computed(() => {
+  const f = props.systemInfo.fan;
+  if (!f || f.rpm == null) return '未上报';
+  return f.rpm === 0 ? '停转 (0 RPM)' : f.rpm + ' RPM';
+});
+
+const fanModeText = computed(() => {
+  const f = props.systemInfo.fan;
+  if (!f || !f.mode) return '未上报';
+  const map = { standard: '标准', quiet: '静音', strong: '强力', auto: '自动' };
+  return map[f.mode] || f.mode;
+});
+
+// 风扇条仅作可视化：0 转显示为空，有转速时按 3000 RPM 满量程折算
+const fanBarWidth = computed(() => {
+  const f = props.systemInfo.fan;
+  if (!f || !f.rpm) return '0%';
+  return Math.min(100, Math.round((f.rpm / 3000) * 100)) + '%';
+});
 
 const pingColorClass = computed(() => {
   if (props.currentRtt <= 0) return 'text-gray';
@@ -380,17 +405,6 @@ const lastPoint = computed(() => {
 
 .font-mono {
   font-family: monospace;
-}
-
-.estim-note {
-  font-size: 11px;
-  line-height: 1.6;
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: var(--mi-radius-md);
-  padding: 8px 12px;
-  margin-bottom: 14px;
 }
 
 .text-muted {

@@ -34,9 +34,13 @@
           <StorageMeter
             :used-bytes="storageData.usedBytes"
             :total-bytes="storageData.totalBytes"
+            :personal-used-bytes="storageData.personalUsedBytes"
             :total-is-estimated="storageData.totalIsEstimated"
             :uid="storageData.uid"
             :pool-type="storageData.poolType"
+            :pool-name="storageData.poolName"
+            :pool-status="storageData.poolStatus"
+            :disks="systemHardwareInfo.disks || []"
           />
 
           <MonitorChart
@@ -226,17 +230,21 @@ const statusInfo = ref({
 const storageData = ref({
   usedBytes: 0,
   totalBytes: 0,
+  personalUsedBytes: 0,
   totalIsEstimated: false,
   uid: '',
-  poolType: '存储池 pool0 (双盘镜像)'
+  poolType: '',
+  poolName: '存储空间',
+  poolStatus: ''
 });
 
 const systemHardwareInfo = ref({
-  estimated: true,
-  model: 'Xiaomi Smart Storage',
-  cpu: { model: 'Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)', cores: 4, usagePercent: null, temp: null },
-  memory: { totalBytes: 4294967296, usedBytes: null, usagePercent: null },
-  network: { linkSpeed: '2.5 Gbps', ip: null }
+  cpu: { usagePercent: null, temp: null },
+  fan: { rpm: null, mode: null },
+  network: { ip: null, mac: null, upload: null, download: null },
+  system: { model: null, serial: null, version: null },
+  ups: { enabled: null },
+  disks: []
 });
 
 const monitorData = ref({
@@ -303,18 +311,24 @@ async function loadAllData() {
       systemHardwareInfo.value = sysRes.data;
     }
 
-    // 3. 获取用户配额与存储容量
+    // 3. 获取用户配额与存储容量（total_size 由网关用 get_pool_info 补齐）
     const usersRes = await apiGetWithCache('/api/users', 'cache_users');
     if (usersRes && usersRes.status !== 'error') {
       const ulist = usersRes.data?.users || usersRes.users || [];
       if (ulist.length > 0) {
         const u = ulist[0];
+        const pool = sysRes?.data?.storagePool || {};
         storageData.value = {
-          usedBytes: parseInt(u.used_size || 0, 10),
-          totalBytes: parseInt(u.total_size || 0, 10),
+          // 进度条按整池口径显示（"存储空间"指池，不是单个用户配额），
+          // 个人配额用量单独展示，避免把两个口径混在一个百分比里。
+          usedBytes: pool.usedBytes || parseInt(u.pool_used_size || 0, 10) || parseInt(u.used_size || 0, 10),
+          totalBytes: parseInt(u.total_size || 0, 10) || pool.totalBytes || 0,
+          personalUsedBytes: parseInt(u.used_size || 0, 10),
           totalIsEstimated: !!u.total_size_is_estimated,
           uid: String(u.uid || ''),
-          poolType: u.pool_type || '存储池 pool0 (双盘镜像)'
+          poolType: u.pool_type || '',
+          poolName: u.pool_name || '存储空间',
+          poolStatus: pool.status || ''
         };
       }
     }

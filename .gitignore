@@ -35,3 +35,7 @@ desktop.ini
 
 # OS
 $RECYCLE.BIN/
+
+# 逆向产物：官方客户端源码副本与字符串还原结果（版权归小米，不入库）
+docs/ui-extract/
+docs/client-strings-full.txt

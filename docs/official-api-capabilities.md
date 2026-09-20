@@ -129,27 +129,26 @@ data.data.resolution_list[]
 
 ---
 
-## 四、明确「未开放」的数据
+## 四、硬件与磁盘数据：此节已作废
 
-以下项目在官方客户端**四万多个字符串里一次都没出现**，属于官方 API 层面不存在：
-官方 App 自己也是不显示的。
+> **勘误**：本文档早期版本断言 CPU / 内存 / 温度 / 风扇 / 硬盘型号"官方未开放"。
+> 这是**错误的**——当时的分析只看了 Electron 主进程（只用 5 个 LuCI 接口），
+> 漏了渲染层 Vue 页面，而硬件信息全在那一层。
+>
+> 正确结论与完整接口清单见 **[official-app-features.md](official-app-features.md)**。
+> 简要版：`system/get_device_status` 提供 CPU 占用/温度、风扇转速/模式、UPS、
+> 网卡 IP/MAC/速率；`storage/get_storage_info` 提供每块硬盘的型号、序列号、
+> 槽位、温度、健康状态、通电时长。
 
-| 数据 | 状态 | 说明 |
-|------|------|------|
-| CPU 使用率 / 核心占用 | **未开放** | `home/get_profile` 恒定返回 `1003 参数错误`，客户端只是尝试性调用后放弃 |
-| 内存占用率 | **未开放** | 同上 |
-| 硬盘温度 / 风扇转速 | **未开放** | 无任何对应接口 |
-| 单块硬盘型号 / SMART | **未开放** | 无对应接口 |
-| 存储池总容量 | **未上报** | `user_list` 通常只给 `used_size`，`total_size` 为 0 |
-| 离线下载 / 同步任务队列 | **未开放** | 无查询接口 |
-| Samba / NFS / 休眠策略读写 | **未开放** | 无接口 |
-| 保险箱文件索引 | **未开放** | 无接口 |
-| 系统日志 / 固件版本查询 | **未开放** | 无接口 |
+真正拿不到的只有：
 
-关于 `home/get_profile`：客户端确实会调它，但把它当作「有则用之、无则忽略」的可选信息，
-并不依赖其返回值。实测它稳定返回 `1003`，所以**不能**把它当作硬件信息来源。
-
----
+| 数据 | 说明 |
+|------|------|
+| 内存总量 / 占用率 | 无 HTTP 查询接口（只有 MQTT `meminfo/update` 主题） |
+| CPU 型号 | 只有占用率与温度，无型号字段 |
+| 硬盘 SMART 详细属性 | 只有 `health` 与温度，无坏道/重映射计数 |
+| `home/get_profile` | 恒定返回 `1003`，客户端自身也不使用 |
+| `system/get_ups_status` | 返回 403（UPS 状态在 `get_device_status.ups`） |
 
 ## 五、还原方法（可复现）
 
@@ -193,9 +192,11 @@ node tools/scan-client-endpoints.cjs "<客户端 electron 目录>"
 | 目录浏览 | ✅ 真实 | `filemgr/search` |
 | 上传 / 下载 / 删除 / 建目录 | ✅ 真实 | WebDAV |
 | 已用容量 | ✅ 真实 | `usermanager/user_list` |
-| 总容量 | ⚠️ 估算 | NAS 未上报，按机型规格声明 |
+| 总容量 | ✅ 真实 | `filemgr/get_pool_info` → `internal_pool[].total_size` |
 | 插件列表与图标 | ✅ 真实 | `plugincenter/get_app_list` |
 | 缩略图 | ✅ 真实（方案不同） | 官方接口未开放生成能力，改为经 WebDAV 取原图 + 本地缓存 |
 | 视频播放与清晰度 | ✅ 真实 | `player/transcode_*` |
-| CPU / 内存 / 温度 / 风扇 | ❌ 不展示 | 官方 API 未开放，界面标注「未上报」 |
-| 任务中心 / 设置 / 保险箱 | ❌ 不展示 | 官方 API 未开放，界面说明原因 |
+| CPU / 温度 / 风扇 / UPS / 网络 | ✅ 真实 | `system/get_device_status` |
+| 每块硬盘型号 / 序列号 / 温度 / 健康 | ✅ 真实 | `storage/get_storage_info` |
+| 固件版本 / 机型 / 序列号 | ✅ 真实 | `get_device_status` + `get_system_version` |
+| 内存占用率 / CPU 型号 | ❌ 不展示 | 官方 API 无此字段 |
