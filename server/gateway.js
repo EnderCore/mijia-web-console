@@ -211,6 +211,10 @@ async function fetchHardwareInfo() {
         runTimeHours: parseInt(d.run_time || 0, 10) || null,
         totalBytes: parseInt(d.total_size || 0, 10) || null,
         usedBytes: parseInt(d.used_size || 0, 10) || null,
+        // partners 是镜像组成员盘（本机为空，非双盘镜像时会有值）；
+        // pool_admin 标记该盘属于哪个池的管理盘。
+        partners: Array.isArray(d.partners) ? d.partners : [],
+        poolAdmin: d.pool_admin || "",
       }));
     }
   }

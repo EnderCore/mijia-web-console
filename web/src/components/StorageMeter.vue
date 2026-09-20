@@ -76,6 +76,12 @@
           </div>
           <div v-if="d.serial" class="disk-serial font-mono">S/N {{ d.serial }}</div>
         </div>
+
+        <!-- 官方 API 只提供上面这些字段；写明边界，避免以为是页面没做全 -->
+        <p class="disk-note">
+          NAS 的接口只上报磁盘型号、序列号、温度、健康状态与通电时长；
+          累计写入量、SMART 属性（重映射扇区等）、UPS 电量均无对应接口，故不显示。
+        </p>
       </div>
     </div>
   </div>
@@ -373,6 +379,13 @@ function formatHours(h) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.disk-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--mi-text-sub);
+  padding: 2px 2px 0;
 }
 
 .estim-tag {

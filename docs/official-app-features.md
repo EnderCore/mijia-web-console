@@ -72,7 +72,67 @@
 | `system/set_fan_mode` | 模式 | **写操作**：设置风扇模式 |
 | `system/nas_power` | 开关 | **写操作**：关机/重启 |
 
-> `system/get_ups_status` 与 `home/get_profile` 均返回 403/1003，不可用。
+> `system/get_ups_status`、`home/get_profile`、`home/save_profile` 在本机固件上
+> 分别返回 403 / 1003 / 1003 —— **UI 代码里有调用，但固件没注册这些路由**。
+> 尤其是 `get_ups_status`：官方 layout.js 明确调用 `Ya("/system/get_ups_status")` 取 UPS 健康度，
+> 说明这是给新机型准备的接口，RP05 这代未实现。UPS 现状只能从 `get_device_status.ups` 读到
+> （仅 `status` + `health` 两个词，没有电量）。
+>
+> `mediacenter/file_list` 与 `media_recommend` 返回 `code 2200 内部错误`（本机无影视库数据）；
+> `media_recently_watched` 正常返回空列表。
+
+#### 关于「更详细的硬盘数据」—— 各字段实测边界
+
+`storage/get_storage_info` 每块盘只有这 13 个字段，**没有 SMART 属性**：
+
+```
+dev  slot  type  model  serial  temperature  health  state
+run_time  total_size  used_size  pool_admin  partners
+```
+
+| 你问的 | 实测结果 |
+|--------|---------|
+| 硬盘**写入量 / 读取量**（TBW / 累计读写） | ❌ 无。只有 `used_size`（当前占用）与 `total_size`，不是累计写入量 |
+| **SMART 属性**（重映射扇区、通电次数、寻道错误率等） | ❌ 无。`health` 只有 `normal` 一个词 |
+| **通电时长** | ✅ 有，`run_time`（小时，当前 455） |
+| **温度** | ✅ 有，`temperature`（整数摄氏度） |
+| **坏道 / 自检进度** | ❌ 无查询接口。`get_feature` 显示 `storage.disk_check: enable`，
+| | 说明固件支持磁盘自检，但客户端**没有**读进度的接口（推测是异步任务，走 MQTT 通知） |
+| **RAID 详情**（镜像状态/成员盘） | ⚠️ 只有 `partners: []`（当前空）与池级 `status: normal` |
+
+穷举验证方式：把客户端 `public/dist` 下所有 UI 里的路径字面量全部提取一遍，
+`/system/*` 与 `/storage/*` 下**只有** `get_device_status`、`get_feature`、`get_power_status`、
+`get_system_version`、`get_upgrade_check`、`get_upgrade_status`、`get_ups_status`、`nas_power`、
+`set_fan_mode`、`get_storage_info`、`modifypool` 这 11 个。
+另外按 `disk_smart` / `get_smart` / `get_sensor` / `get_temperature` 等 14 个常见命名
+逐个试打，全部 403。**结论：SMART 细节在这代固件的 API 层面不存在**，
+不是我们没找到，也不是权限问题。
+
+#### UPS 电量
+
+❌ 拿不到。`ups` 对象只有两个字段：
+
+```json
+"ups": { "status": "enable", "health": "health" }
+```
+
+`health` 的取值就是字面量 `"health"`（表示健康），没有电量百分比、剩余续航、电池电压等。
+`get_ups_status` 本该提供更细的信息，但本机固件 403 未实现。
+另外 `ups_health` 在客户端里是个**通知类型**（`notice.msgType`），
+即 UPS 异常时由 NAS 主动推送提醒——属于事件通知，不是可查询的电量数据。
+
+#### `get_feature` 暴露的模块开关（可用来判断机型能力）
+
+```json
+storage:      { disk_check: 1, fix_filesystem: 1 }   ← 支持磁盘自检/修复
+mifan:        { fan_mode: 0 }                        ← 本机禁用风扇模式设置
+plugincenter: { plugin_xunlei: 1, plugin_baidupan: 1, install_from_local: 0 }
+filemgr:      { file_share: 1, recycle_keep_time: 30 }
+system:       { device_poweroff: 1, alldata_delete: 1, restore_database: 1 }
+```
+
+注意 `mifan.fan_mode: 0` —— 说明**本机不支持调风扇模式**，
+所以我们只读展示 `fan.mode`，不去调用 `set_fan_mode`（调了也不会生效）。
 
 ### 3.2 文件管理
 
@@ -230,14 +290,23 @@ MQTT 消息原样透传给渲染层，**字段名由 NAS 决定**——逆向时
 
 ## 六、明确拿不到的
 
+以下都经过穷举验证（提取客户端全部路径字面量 + 逐个试打常见命名），
+不是"没找到"，而是这代固件的 API 层面不存在。
+
 | 数据 | 状态 | 说明 |
 |------|------|------|
-| 内存总量 / 占用率 | **未开放** | 只有 `meminfo/update` 这个 MQTT 主题，但无 HTTP 查询接口 |
-| CPU 型号 | **未开放** | 只有占用率与温度，没有型号字符串 |
-| 硬盘 SMART 详细属性 | **未开放** | 只有 `health`(normal) 与温度，没有坏道/重映射计数 |
-| 风扇目标转速 | **未开放** | 只有当前 `rpm` 与 `mode`，不能读目标曲线（可写 `set_fan_mode`） |
-| `home/get_profile` | **不可用** | 恒定返回 `1003 参数错误`，客户端自身也不用它 |
-| `system/get_ups_status` | **不可用** | 返回 403（UPS 状态在 `get_device_status.ups` 里） |
+| **硬盘累计写入量 / 读取量** | **不存在** | 只有 `used_size`（当前占用），没有 TBW / 累计读写统计 |
+| **SMART 属性**（重映射扇区、寻道错误率、通电次数） | **不存在** | `health` 只有 `normal` 一词；14 个常见命名全试过，403 |
+| **UPS 电量 / 续航 / 电压** | **不存在** | `ups` 只有 `status`+`health`；`get_ups_status` 固件未实现（403） |
+| 内存总量 / 占用率 | 不存在 | 只有 MQTT `meminfo/update` 主题，无 HTTP 查询接口 |
+| CPU 型号 | 不存在 | 只有占用率与温度，无型号字段 |
+| 风扇目标转速 / 曲线 | 不存在 | 只有当前 `rpm`；且本机 `mifan.fan_mode: 0`，连 `set_fan_mode` 都不生效 |
+| 磁盘自检进度 | 不存在 | `disk_check` 能力有，但无查询接口（推测走 MQTT 通知） |
+| `home/get_profile` / `save_profile` | 不可用 | 恒定 `1003 参数错误` |
+| `system/get_ups_status` | 不可用 | 403；UI 有调用，属新机型预留接口 |
+| `mediacenter/file_list` / `media_recommend` | 不可用 | `code 2200 内部错误`（本机无影视库数据） |
+
+可用的最详细硬盘数据就是「六」段之前列出的那 13 个字段。
 
 ---
 
