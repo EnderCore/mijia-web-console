@@ -131,9 +131,9 @@ web-test/
 | `/api/system` | GET | 处理器型号/核心数/内存规格（**运行时占用率恒为 null**，官方无此接口） |
 | `/api/users` | GET | 管理员 UID、已用容量、配额（`/cgi-bin/luci/usermanager/user_list`） |
 | `/api/apps` | GET | 已安装插件与应用列表（`/cgi-bin/luci/plugincenter/get_app_list`） |
-| `/api/files` | GET | 文件检索与目录钻取（`?parent=<绝对路径>` 列出子目录） |
-| `/api/stream` | GET | 视频/大文件流式传输（Range 透传，支持 206 拖拽快进） |
-| `/api/thumbnail` | GET | NAS 缩略图代理（带磁盘缓存） |
+| `/api/files` | GET | 文件检索与目录钻取（`?parent=<绝对路径>` 列目录，`?keyword=` 全盘搜索） |
+| `/api/stream` | GET | 视频/大文件流式传输（WebDAV GET + Range 透传，支持 206 拖拽快进） |
+| `/api/thumbnail` | GET | 缩略图（经 WebDAV 取原图 + 本地磁盘缓存；官方未开放缩略图生成接口） |
 | `/api/image` | GET | 应用图标代理（带磁盘缓存） |
 | `/api/monitor` | GET | 端到端 RTT 采样（最近 20 次历史；探测失败时如实返回 `status: "error"`，不生成随机值） |
 
@@ -148,6 +148,14 @@ web-test/
 | `/api/video/task` | GET | 转码任务生命周期（`?action=create\|resolutions\|destroy`） |
 
 > 所有路径参数均支持中文与特殊字符，网关会做逐段百分号编码后转发给 NAS。
+
+### 关于官方接口的完整清单
+
+**➡️ 详见 [docs/official-api-capabilities.md](docs/official-api-capabilities.md)**
+
+该文档从官方客户端混淆代码中还原了全部可用接口、请求体结构、字段名，
+以及官方 API **未开放**哪些数据（CPU/内存/温度/风扇/任务队列/设置读写等）。
+如果某个功能想做，先查那张表——表里没有的接口就是不存在的，不要凭印象补一个。
 
 ---
 

@@ -112,7 +112,7 @@ function streamUrlFor(q) {
   return q.url || originStreamUrl();
 }
 
-// 向 NAS 申请清转码任务并拉取真实可用清晰度
+// 向 NAS 申请转码任务并拉取真实可用清晰度
 async function loadResolutions() {
   const p = props.video?.path;
   if (!p) return;
@@ -128,28 +128,31 @@ async function loadResolutions() {
 
     const rres = await fetch(`/api/video/task?action=resolutions&taskId=${encodeURIComponent(taskId)}&path=${encodeURIComponent(p)}`);
     const rdata = await rres.json();
-    const list = rdata?.data?.resolutions || rdata?.data?.list || [];
+    const list = rdata?.data?.resolutionList || [];
 
     if (!Array.isArray(list) || list.length === 0) {
       resolutionError.value = 'NAS 未返回可选清晰度，仅可播放原画';
       return;
     }
 
-    // NAS 返回的每一项映射成一个档位；url 必须是真实可播地址
-    const extra = list
-      .map((r) => {
-        const url = r.url || r.m3u8 || r.play_url || '';
-        if (!url) return null;
+    // 官方结构：resolution_list[].url_list[].m3u8_url
+    // 每一项可能带多个 url_list 子项，逐个展开成档位。
+    const extra = [];
+    for (const r of list) {
+      const urls = Array.isArray(r.url_list) ? r.url_list : [];
+      for (const u of urls) {
+        const url = u.m3u8_url || u.url || '';
+        if (!url) continue;
         const h = parseInt(r.height || r.resolution || 0, 10);
-        return {
-          key: `r${h || r.name || Math.random().toString(36).slice(2, 7)}`,
+        extra.push({
+          key: `r${h || extra.length}-${url.slice(-12)}`,
           label: r.name || (h ? `${h}P` : '转码流'),
           badge: 'NAS 转码',
           sourceType: r.codec ? `转码流 (${r.codec})` : 'NAS 转码流',
           url
-        };
-      })
-      .filter(Boolean);
+        });
+      }
+    }
 
     if (extra.length === 0) {
       resolutionError.value = 'NAS 未返回可播放的转码地址，仅可播放原画';

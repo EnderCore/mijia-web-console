@@ -161,6 +161,31 @@ const FULL_APPS = [
 
 // 真实文件与媒体列表（包含真内联高清缩略图数据 URI，实现断网与极低网速下的即刻秒显）
 // 内置极简高质量 SVG 渲染图案作为高保真缩略图，避免依赖外部不可靠的第三方 CDN
+// 文件扩展名 -> MIME，用于本机直传响应（NAS 未给 Content-Type 时的兜底）
+function mimeFor(p) {
+  const ext = path.extname(p).toLowerCase();
+  const table = {
+    ".mp4": "video/mp4", ".mkv": "video/x-matroska", ".mov": "video/quicktime",
+    ".avi": "video/x-msvideo", ".ts": "video/mp2t", ".webm": "video/webm",
+    ".flv": "video/x-flv", ".rmvb": "application/vnd.rn-realmedia-vbr",
+    ".m4v": "video/x-m4v", ".mpg": "video/mpeg", ".mpeg": "video/mpeg",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".heic": "image/heic", ".heif": "image/heif", ".tiff": "image/tiff",
+    ".mp3": "audio/mpeg", ".flac": "audio/flac", ".wav": "audio/wav",
+    ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg",
+    ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8", ".json": "application/json; charset=utf-8",
+  };
+  return table[ext] || "application/octet-stream";
+}
+
+// 图片类扩展名 -> MIME（缩略图缓存响应使用，缺省按 jpeg 处理）
+function imageMimeFor(p) {
+  const m = mimeFor(p);
+  return m.startsWith("image/") ? m : "image/jpeg";
+}
+
 function generateSvgThumbnail(title, color1, color2, icon) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
     <defs>
@@ -540,9 +565,10 @@ const server = http.createServer(async (req, res) => {
 
       let searchBody = {};
       if (reqParent) {
-        // 进入指定子目录时，严格采用官方 options 路径结构
+        // 列目录：type 必须是 "directory"（官方 searchDirList 的取值），
+        // 用 "all" 会走成全盘关键词搜索，语义完全不同。
         searchBody = {
-          type: "all",
+          type: "directory",
           page: { size: 500, token: "" },
           options: {
             option: ["path"],
@@ -554,7 +580,7 @@ const server = http.createServer(async (req, res) => {
           show_dotfile: false
         };
       } else {
-        // 根视图：列出根目录或全局关键字搜索
+        // 根视图：全盘关键词搜索
         searchBody = {
           keyword: reqKeyword,
           type: "all",
@@ -613,17 +639,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 6. /api/thumbnail 真实 NAS 缩略图生成代理与本地磁盘二级持久缓存
+  // 6. /api/thumbnail 缩略图：经 WebDAV 取原图 → 本地缓存 → 直接返回
+  //
+  // 注意：官方客户端**没有** LuCI 缩略图接口。它的做法是 downloadThumbnail.js
+  // 走 WebDAV 下载原图，在客户端本机转换/缩放后由 localServer.js 提供出去。
+  // 这里采用同样思路：首次请求拉原图并落盘缓存，之后直接命中缓存。
+  // 图片体积较大时前端应优先用列表小图，避免一次拉取过多原图。
   if (pathname === "/api/thumbnail") {
     const filePath = parsedUrl.searchParams.get("path") || "";
     const size = parsedUrl.searchParams.get("size") || "small";
-    const cacheKey = crypto.createHash("md5").update(`${filePath}_${size}`).digest("hex") + ".jpg";
+    const cacheKey = crypto.createHash("md5").update(`${filePath}_${size}`).digest("hex") + ".img";
     const localCachedFile = path.join(CACHE_DIR, cacheKey);
 
     // 优先命中本地磁盘缓存 (秒级响应)
     if (fs.existsSync(localCachedFile)) {
       res.writeHead(200, {
-        "Content-Type": "image/jpeg",
+        "Content-Type": imageMimeFor(filePath),
         "Cache-Control": "public, max-age=604800, immutable",
         "X-Cache-Lookup": "HIT"
       });
@@ -631,58 +662,47 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const svgFallback = () => {
+      const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
+      return generateSvgThumbnail(path.basename(filePath) || "Thumbnail",
+        isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8",
+        isVideo ? "🎬" : "🖼️");
+    };
+
+    // 视频没有可用的缩略图来源（NAS 未开放截图接口），直接用矢量占位图，
+    // 不浪费一次原图下载。
+    if (/\.(mp4|mkv|mov|avi|ts|flv|webm|rmvb)$/i.test(filePath)) {
+      res.writeHead(302, { Location: svgFallback() });
+      res.end();
+      return;
+    }
+
+    // 图片：经 WebDAV 取原图并落盘缓存
+    let dav;
     try {
       await ensureReady();
-      // 向 NAS 发送 POST /cgi-bin/luci/filemgr/get_thumbnail
-      const postPayload = JSON.stringify({ path: filePath, size: size });
-      const proxyReq = https.request({
-        host: "127.0.0.1",
-        port: activeUrlPort,
-        path: "/cgi-bin/luci/filemgr/get_thumbnail",
-        method: "POST",
-        rejectUnauthorized: false,
-        cert: cert,
-        key: key,
-        ca: ca,
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(postPayload),
-          "Cookie": `token=${accessToken}`,
-          "Authorization": accessToken
-        },
-        timeout: 8000
-      }, (proxyRes) => {
-        if (proxyRes.statusCode === 200) {
-          res.writeHead(200, {
-            "Content-Type": proxyRes.headers["content-type"] || "image/jpeg",
-            "Cache-Control": "public, max-age=604800, immutable",
-            "X-Cache-Lookup": "MISS"
-          });
-          const writeStream = fs.createWriteStream(localCachedFile);
-          proxyRes.pipe(writeStream);
-          proxyRes.pipe(res);
-        } else {
-          // 若远端生成失败或该文件格式特殊，降级为矢量标识
-          const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
-          const fallback = generateSvgThumbnail(path.basename(filePath), isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8", isVideo ? "🎬" : "🖼️");
-          res.writeHead(302, { Location: fallback });
-          res.end();
-        }
-      });
-      proxyReq.on("error", () => {
-        const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
-        const fallback = generateSvgThumbnail(path.basename(filePath), isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8", isVideo ? "🎬" : "🖼️");
-        res.writeHead(302, { Location: fallback });
-        res.end();
-      });
-      proxyReq.write(postPayload);
-      proxyReq.end();
+      dav = await callWebdav("GET", filePath, {}, null, 30000);
     } catch (e) {
-      const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
-      const fallback = generateSvgThumbnail(path.basename(filePath) || "Thumbnail", isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8", isVideo ? "🎬" : "🖼️");
-      res.writeHead(302, { Location: fallback });
+      res.writeHead(302, { Location: svgFallback() });
       res.end();
+      return;
     }
+
+    if (dav.statusCode !== 200) {
+      dav.resume();
+      res.writeHead(302, { Location: svgFallback() });
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": dav.headers["content-type"] || imageMimeFor(filePath),
+      "Cache-Control": "public, max-age=604800, immutable",
+      "X-Cache-Lookup": "MISS"
+    });
+    const writeStream = fs.createWriteStream(localCachedFile);
+    dav.pipe(writeStream);
+    dav.pipe(res);
     return;
   }
 
@@ -748,67 +768,43 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 8. /api/stream 视频与大文件流式传输 (支持 HTTP 206 Partial Content / Range 拖拽快进)
+  // 8. /api/stream 视频与大文件流式传输（WebDAV Range GET，支持 206 拖拽快进）
+  //
+  // 官方客户端没有 LuCI 取文件内容的接口，播放/下载一律走 WebDAV。
+  // 这里同样用 WebDAV GET 并把浏览器的 Range 头原样透传，NAS 会回 206 与 Content-Range。
   if (pathname === "/api/stream") {
     const filePath = parsedUrl.searchParams.get("path") || "";
     if (!filePath) {
       res.writeHead(400); res.end("Missing path parameter"); return;
     }
 
+    let streamRes;
     try {
       await ensureReady();
-      const postPayload = JSON.stringify({ path: filePath });
-      const reqHeaders = {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(postPayload),
-        "Cookie": `token=${accessToken}`,
-        "Authorization": accessToken
-      };
-
-      // 透传浏览器的 Range 请求头，实现秒级快进拖拽
-      if (req.headers["range"]) {
-        reqHeaders["Range"] = req.headers["range"];
-      }
-
-      const streamReq = https.request({
-        host: "127.0.0.1",
-        port: activeUrlPort,
-        path: "/cgi-bin/luci/filemgr/get_file",
-        method: "POST",
-        rejectUnauthorized: false,
-        cert: cert,
-        key: key,
-        ca: ca,
-        headers: reqHeaders,
-        timeout: 300000 // 5分钟长连接用于流式传输
-      }, (streamRes) => {
-        // 传递 200 或 206 状态码及关键媒体头
-        const responseHeaders = {
-          "Content-Type": streamRes.headers["content-type"] || "video/mp4",
-          "Accept-Ranges": "bytes",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Range, Authorization, Content-Type",
-          "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
-        };
-        if (streamRes.headers["content-range"]) {
-          responseHeaders["Content-Range"] = streamRes.headers["content-range"];
-        }
-        if (streamRes.headers["content-length"]) {
-          responseHeaders["Content-Length"] = streamRes.headers["content-length"];
-        }
-
-        res.writeHead(streamRes.statusCode, responseHeaders);
-        streamRes.pipe(res);
-      });
-
-      streamReq.on("error", (e) => {
-        if (!res.headersSent) { res.writeHead(502); res.end("Stream error: " + e.message); }
-      });
-      streamReq.write(postPayload);
-      streamReq.end();
+      const fwdHeaders = {};
+      if (req.headers["range"]) fwdHeaders["Range"] = req.headers["range"];
+      streamRes = await callWebdav("GET", filePath, fwdHeaders, null, 300000);
     } catch (e) {
-      if (!res.headersSent) { res.writeHead(500); res.end(e.message); }
+      if (!res.headersSent) { res.writeHead(502); res.end("Stream error: " + e.message); }
+      return;
     }
+
+    const responseHeaders = {
+      "Content-Type": streamRes.headers["content-type"] || mimeFor(filePath),
+      "Accept-Ranges": "bytes",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Range, Authorization, Content-Type",
+      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+    };
+    if (streamRes.headers["content-range"]) {
+      responseHeaders["Content-Range"] = streamRes.headers["content-range"];
+    }
+    if (streamRes.headers["content-length"]) {
+      responseHeaders["Content-Length"] = streamRes.headers["content-length"];
+    }
+
+    res.writeHead(streamRes.statusCode, responseHeaders);
+    streamRes.pipe(res);
     return;
   }
 
@@ -985,11 +981,12 @@ const server = http.createServer(async (req, res) => {
       const taskId = parsedUrl.searchParams.get("taskId") || "";
 
       if (action === "create") {
-        // 创建转码任务（须带 file_path，否则 NAS 不知道要转哪个文件）
-        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_create_task", { file_path: filePath });
+        // 官方客户端 transcodeCreateTask() 不带参数（player.js 内 reqCommonDeal 默认 {}），
+        // 不带 file_path；转码文件由后续 transcode_switchable 指定。
+        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_create_task", {});
         const tId = resp.data?.data?.task_id || "";
         if (tId && filePath) {
-          // 启动转码调度
+          // 启动转码调度（这一步才带 file_path）
           await callNasAPI("/cgi-bin/luci/player/transcode_switchable", { task_id: tId, file_path: filePath });
         }
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -998,10 +995,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (action === "resolutions") {
-        // 查询当前可用清晰度列表与 m3u8
+        // 清晰度列表：官方响应结构为 data.resolution_list[].url_list[].m3u8_url
+        // （字段名取自 player.js/socket.js 解码结果，不是猜的）
         const resp = await callNasAPI("/cgi-bin/luci/player/transcode_get_resolution", { task_id: taskId, file_path: filePath });
+        const d = resp.data?.data || {};
+        const list = Array.isArray(d.resolution_list) ? d.resolution_list : [];
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ status: "ok", data: resp.data?.data || {} }));
+        res.end(JSON.stringify({ status: "ok", data: { resolutionList: list }, raw: d }));
         return;
       }
 
