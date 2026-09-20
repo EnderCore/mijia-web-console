@@ -85,6 +85,7 @@
     <MediaCenterModal
       :visible="showMediaModal"
       :media-url="mediaCenterUrl"
+      :error="mediaCenterError"
       @close="showMediaModal = false"
     />
 
@@ -145,12 +146,60 @@
             </p>
           </div>
 
-          <!-- 任务中心视图 -->
+          <!-- 任务中心视图：真实进度与速率，来自 taskcenter/get_taskinfo -->
           <div v-else-if="activeDialog.type === 'task'" class="task-view">
-            <p class="unavailable-note">
-              官方 LuCI 未开放离线下载与同步队列的查询接口，网页版无法展示真实任务进度。
-              请使用小米智能存储官方客户端查看。
+            <div class="task-tabs">
+              <button
+                v-for="t in taskTabs"
+                :key="t.key"
+                class="task-tab"
+                :class="{ active: taskTab === t.key }"
+                @click="switchTaskTab(t.key)"
+              >
+                {{ t.name }}
+              </button>
+              <button class="task-refresh" :disabled="taskLoading" @click="loadTasks(taskTab)">
+                {{ taskLoading ? '加载中…' : '刷新' }}
+              </button>
+            </div>
+
+            <div v-if="taskSummary" class="task-summary">
+              <span>进行中 <b>{{ taskSummary.running_cnt ?? 0 }}</b></span>
+              <span>成功 <b>{{ taskSummary.success_cnt ?? 0 }}</b></span>
+              <span>失败 <b class="text-red">{{ taskSummary.failed_cnt ?? 0 }}</b></span>
+              <span>已停止 <b>{{ taskSummary.stop_cnt ?? 0 }}</b></span>
+            </div>
+
+            <p v-if="taskError" class="task-empty">{{ taskError }}</p>
+            <p v-else-if="!taskLoading && tasks.length === 0" class="task-empty">
+              暂无任务记录
             </p>
+
+            <div v-else class="task-list">
+              <div v-for="t in tasks" :key="t.id" class="task-card">
+                <div class="t-top">
+                  <span class="t-name" :title="t.src[0] || t.name">
+                    {{ t.name || '(未知文件)' }}
+                    <template v-if="t.srcCount > 1">等 {{ t.srcCount }} 项</template>
+                  </span>
+                  <span class="t-status" :class="taskStatusClass(t.status)">
+                    {{ taskStatusText(t) }}
+                  </span>
+                </div>
+
+                <div class="t-prog">
+                  <div class="t-fill" :class="{ green: t.status === 'success', red: t.status === 'failed' }"
+                       :style="{ width: (t.progress ?? 0) + '%' }"></div>
+                </div>
+
+                <div class="t-bot">
+                  <span>{{ taskActionText(t.action) }} · {{ t.progress ?? 0 }}%</span>
+                  <span v-if="t.speed">{{ t.speed }}</span>
+                  <span v-if="t.totalFiles != null">{{ t.handledFiles ?? 0 }}/{{ t.totalFiles }} 个文件</span>
+                  <span v-if="t.errMsg && t.errCode">{{ t.errMsg }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -256,11 +305,10 @@ const monitorData = ref({
 const appsList = ref([]);
 const recentFiles = ref([]);
 
-// 影视墙原生路径
-const mediaCenterUrl = computed(() => {
-  const p = statusInfo.value.webPort || 25447;
-  return `http://127.0.0.1:${p}/plugin/mediacenter/`;
-});
+// 影视墙地址：由网关从 get_app_list 取真实插件 URL 并代理（带 token），
+// 不再拼硬编码的 webPort 路径 —— 官方实际走的是 urlport 且必须带 token。
+const mediaCenterUrl = ref('');
+const mediaCenterError = ref('');
 
 function formatSize(bytes) {
   const b = parseInt(bytes, 10);
@@ -361,9 +409,90 @@ async function loadAllData() {
 }
 
 // 小程序呼出与交互处理
+// ===== 任务中心（真实数据，来自 taskcenter/get_taskinfo）=====
+const taskTabs = [
+  { key: 'running', name: '进行中' },
+  { key: 'history', name: '历史' },
+];
+const taskTab = ref('running');
+const tasks = ref([]);
+const taskSummary = ref(null);
+const taskLoading = ref(false);
+const taskError = ref('');
+
+async function loadTasks(type = taskTab.value) {
+  taskLoading.value = true;
+  taskError.value = '';
+  try {
+    // 任务列表
+    const res = await fetch(`/api/tasks?type=${encodeURIComponent(type)}`);
+    const data = await res.json();
+    if (data.status === 'ok') {
+      tasks.value = data.data?.tasks || [];
+    } else {
+      tasks.value = [];
+      taskError.value = data.message || '任务查询失败';
+    }
+    // 计数概览
+    const sres = await fetch('/api/tasks?type=status');
+    const sdata = await sres.json();
+    if (sdata.status === 'ok') taskSummary.value = sdata.data || null;
+  } catch (e) {
+    tasks.value = [];
+    taskError.value = '无法连接网关: ' + e.message;
+  } finally {
+    taskLoading.value = false;
+  }
+}
+
+function switchTaskTab(key) {
+  taskTab.value = key;
+  loadTasks(key);
+}
+
+function taskActionText(a) {
+  const map = {
+    remove: '删除', copy: '复制', move: '移动', compress: '压缩', decompress: '解压',
+    upload: '上传', download: '下载', rename: '重命名',
+  };
+  return map[a] || (a || '任务');
+}
+
+function taskStatusText(t) {
+  const map = { success: '已完成', failed: '失败', running: '进行中', stop: '已停止', waiting: '排队中' };
+  const base = map[t.status] || t.status || '';
+  if (t.status === 'running' && t.speed) return `${base} ${t.speed}`;
+  return base;
+}
+
+function taskStatusClass(s) {
+  if (s === 'success') return 'text-green';
+  if (s === 'failed') return 'text-red';
+  if (s === 'running') return 'text-orange';
+  return 'text-muted';
+}
+
+// 打开影视墙：先向网关要真实的插件代理地址（官方 URL 带 token，不能直接拼）
+async function openMediaCenter() {
+  try {
+    const res = await fetch('/api/mediacenter/url');
+    const data = await res.json();
+    if (data.status === 'ok' && data.data?.proxied) {
+      mediaCenterUrl.value = data.data.proxied;
+    } else {
+      mediaCenterError.value = data.message || '未取到影视墙地址';
+      mediaCenterUrl.value = '';
+    }
+  } catch (e) {
+    mediaCenterError.value = '无法连接网关: ' + e.message;
+    mediaCenterUrl.value = '';
+  }
+  showMediaModal.value = true;
+}
+
 function handleLaunchApp(app) {
   if (app.plugin === 'mediacenter') {
-    showMediaModal.value = true;
+    openMediaCenter();
   } else if (app.name === '相册') {
     activeDialog.value = {
       title: 'AI 智能相册 (NAS 实际照片流)',
@@ -400,8 +529,11 @@ function handleLaunchApp(app) {
       title: '传输与后台任务中心',
       icon: '⚡',
       type: 'task',
-      desc: '查看正在进行的文件传输、双向增量同步与离线下载'
+      desc: '文件传输与后台任务的真实进度、速率与结果（数据来自 NAS 任务中心接口）'
     };
+    // 打开即拉取，默认看进行中的任务
+    taskTab.value = 'running';
+    loadTasks('running');
   } else if (app.name === '保险箱') {
     activeDialog.value = {
       title: '加密保险箱',
@@ -744,6 +876,108 @@ onUnmounted(() => {
   margin-bottom: 12px;
 }
 
+.task-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.task-tab {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 14px;
+  background: #f1f5f9;
+  color: var(--mi-text-sub);
+  transition: all 0.2s;
+}
+
+.task-tab.active {
+  background: var(--mi-orange);
+  color: #fff;
+}
+
+.task-refresh {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--mi-border);
+  color: var(--mi-text-sub);
+  background: #fff;
+}
+
+.task-refresh:disabled {
+  opacity: 0.55;
+}
+
+.task-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--mi-text-sub);
+  background: #f8fafc;
+  border: 1px solid var(--mi-border);
+  border-radius: var(--mi-radius-md);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.task-summary b {
+  color: var(--mi-text-main);
+}
+
+.task-empty {
+  font-size: 12px;
+  color: var(--mi-text-sub);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.task-list {
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.t-fill.red {
+  background: #ef4444;
+}
+
+.t-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62%;
+}
+
+.t-status {
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.t-bot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--mi-text-sub);
+}
+
+.text-red {
+  color: #dc2626;
+}
+
+.text-orange {
+  color: #ea580c;
+}
+
+.text-muted {
+  color: var(--mi-text-sub);
+}
+
 .t-top {
   display: flex;
   justify-content: space-between;
@@ -768,13 +1002,6 @@ onUnmounted(() => {
 
 .t-fill.green {
   background: #10b981;
-}
-
-.t-bot {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--mi-text-sub);
 }
 
 /* 媒体大图与视频播放器 */

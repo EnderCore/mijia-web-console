@@ -610,6 +610,122 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 2.2 /api/tasks 任务中心：上传/下载/复制/压缩/删除的进度与速率
+  //
+  // 官方 file-taskCenter 页的用法（从 index-DzZSkKO8.js 还原）：
+  //   总览：get_task_status  { selector:[{key:"module",value:["filemgr"]}] }
+  //   列表：get_taskinfo     { selector:[{key:"module",value:["filemgr"]},
+  //                                      {key:"type",value:["history"|"running"]}],
+  //                            page:{size:1000,id:1} }
+  // 任务项关键字段：action(remove/copy/...)、status、src[]、dst、
+  //   detail.progress(0-100)、detail.speed(如 "1.2MB/s")、
+  //   detail.total_size / handle_size、detail.total_files / handled_files、
+  //   detail.err_code / err_msg、create_time / done_time
+  if (pathname === "/api/tasks") {
+    const wantType = parsedUrl.searchParams.get("type") || ""; // '' | running | history
+    try {
+      await ensureReady();
+
+      const selector = [{ key: "module", value: ["filemgr"] }];
+      if (wantType) selector.push({ key: "type", value: [wantType] });
+
+      let list = [];
+      if (wantType === "status") {
+        // 只取计数概览
+        const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_task_status", {
+          selector: [{ key: "module", value: ["filemgr"] }],
+        });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "ok", data: r.data?.data || {} }));
+        return;
+      }
+
+      const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_taskinfo", {
+        selector,
+        page: { size: 1000, id: 1 },
+      });
+      const d = r.data?.data || {};
+      list = Array.isArray(d.info) ? d.info : [];
+
+      const mapped = list.map((t) => {
+        const det = t.detail || {};
+        const src = Array.isArray(t.src) ? t.src : (t.src ? [t.src] : []);
+        return {
+          id: String(t.task_id || ""),
+          module: t.module || "",
+          action: t.action || "",
+          status: t.status || "",
+          srcType: t.src_type || "",
+          src,
+          // 文件名取第一项的 basename，前端再拼"等 N 项"
+          name: src[0] ? src[0].split("/").pop() : "",
+          srcCount: src.length,
+          dst: t.dst || "",
+          createTime: parseInt(t.create_time || 0, 10) || null,
+          doneTime: parseInt(t.done_time || 0, 10) || null,
+          progress: det.progress ?? null,
+          // speed 是 NAS 给的带单位字符串，如 "1.2MB/s"；空表示已停/未开始
+          speed: det.speed || "",
+          totalBytes: parseInt(det.total_size || 0, 10) || null,
+          doneBytes: parseInt(det.handle_size || 0, 10) || null,
+          totalFiles: det.total_files ?? null,
+          handledFiles: det.handled_files ?? null,
+          errCode: det.err_code ?? null,
+          errMsg: det.err_msg || "",
+        };
+      });
+
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: "ok",
+        data: {
+          tasks: mapped,
+          total: d.page?.total_task ?? mapped.length,
+          type: wantType || "all",
+        },
+      }));
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message, data: { tasks: [] } }));
+    }
+    return;
+  }
+
+  // 2.3 /api/mediacenter/url 返回可直接内嵌的影视墙地址（经本网关代理）
+  if (pathname === "/api/mediacenter/url") {
+    try {
+      await ensureReady();
+      // 官方 get_app_list 里就有真实插件 URL，取其路径部分
+      const appsRes = await callNasAPI("/cgi-bin/luci/plugincenter/get_app_list", {});
+      const apps = appsRes.data?.data?.app || [];
+      const mc = apps.find((a) => a.id === 2 || a.name === "影视" || (a.url || "").includes("mediacenter"));
+      const rawUrl = mc?.url || "";
+
+      // https://localhost:443/plugin/<uid>/mediacenter/index.html#/xxx
+      // → 经本地网关代理：/plugin/<uid>/mediacenter/index.html#/xxx
+      let proxied = "";
+      if (rawUrl) {
+        try {
+          const u = new URL(rawUrl);
+          proxied = u.pathname + u.search + u.hash;
+        } catch (e) {
+          proxied = rawUrl;
+        }
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: proxied ? "ok" : "error",
+        message: proxied ? "" : "NAS 未返回影视墙插件地址",
+        data: { upstream: rawUrl, proxied },
+      }));
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message, data: {} }));
+    }
+    return;
+  }
+
   // 3. /api/apps 应用与小程序中心 (支持状态控制)
   if (pathname === "/api/apps") {
     try {
@@ -1178,6 +1294,62 @@ const server = http.createServer(async (req, res) => {
         history: rttHistory,
         tunnel: ""
       }));
+    }
+    return;
+  }
+
+  // 9.5 /plugin/* 代理 NAS 插件页面（影视墙等）
+  //
+  // 官方客户端的做法（index-DM3JDHLo.js 的 getPluginURL）：把插件 URL 里的
+  // https://localhost:443 换成本机隧道，即 https://127.0.0.1:<urlport>/plugin/<uid>/<plugin>/...
+  // 关键：该路径**必须带 token**（Cookie 或 Authorization），否则 Nginx 返回 403。
+  //
+  // 浏览器直接访问会有两个问题：自签证书 + 无法注入 token。
+  // 所以这里由网关代理，注入 token 后转发，插件页面即可内嵌到 iframe 中。
+  if (pathname.startsWith("/plugin/")) {
+    try {
+      await ensureReady();
+      const upstream = parsedUrl.pathname + (parsedUrl.search || "");
+      const headers = {
+        Cookie: `token=${accessToken}`,
+        Authorization: accessToken,
+      };
+      // 透传 Range，插件里的视频/大文件也支持拖拽
+      if (req.headers["range"]) headers["Range"] = req.headers["range"];
+
+      const proxyReq = https.request({
+        host: "127.0.0.1",
+        port: activeUrlPort,
+        path: upstream,
+        method: req.method,
+        rejectUnauthorized: false,
+        cert, key, ca,
+        headers,
+        timeout: 60000,
+      }, (pres) => {
+        const outHeaders = {};
+        for (const k of ["content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"]) {
+          if (pres.headers[k]) outHeaders[k] = pres.headers[k];
+        }
+        // 插件是 SPA，入口 HTML 不缓存，静态资源可缓存
+        outHeaders["Cache-Control"] = /\.(js|css|png|jpg|jpeg|svg|woff2?|ico)$/i.test(upstream)
+          ? "public, max-age=86400"
+          : "no-cache";
+        res.writeHead(pres.statusCode, outHeaders);
+        pres.pipe(res);
+      });
+      proxyReq.on("error", (e) => {
+        if (!res.headersSent) { res.writeHead(502); res.end("插件代理失败: " + e.message); }
+      });
+      proxyReq.on("timeout", () => { proxyReq.destroy(); });
+      // 支持插件的 POST（如 baidupan.cgi）
+      if (req.method === "POST" || req.method === "PUT") {
+        req.pipe(proxyReq);
+      } else {
+        proxyReq.end();
+      }
+    } catch (e) {
+      if (!res.headersSent) { res.writeHead(500); res.end("插件代理异常: " + e.message); }
     }
     return;
   }

@@ -4,10 +4,10 @@
       <div class="modal-header">
         <div class="modal-title">
           <span class="icon">🎬</span>
-          <h4>小米智能存储 · 官方影视墙 (Web 原生界面)</h4>
+          <h4>小米智能存储 · 官方影视墙</h4>
         </div>
         <div class="modal-actions">
-          <a :href="mediaUrl" target="_blank" class="open-tab-btn" title="在新标签页全屏打开">
+          <a v-if="mediaUrl" :href="mediaUrl" target="_blank" class="open-tab-btn" title="在新标签页全屏打开">
             在新标签页打开 ↗
           </a>
           <button class="close-btn" @click="$emit('close')">✕</button>
@@ -15,7 +15,16 @@
       </div>
 
       <div class="modal-body">
-        <iframe :src="mediaUrl" class="media-frame" frameborder="0"></iframe>
+        <!-- 拿不到地址时说明原因，而不是显示一个空白 iframe -->
+        <div v-if="!mediaUrl" class="frame-error">
+          <p class="err-title">无法打开影视墙</p>
+          <p class="err-msg">{{ error || 'NAS 未返回插件地址' }}</p>
+          <p class="err-hint">
+            影视墙是 NAS 上的插件页面，需经网关代理并注入访问令牌才能打开。
+            请确认官方客户端在运行、且 NAS 已安装「影视」插件。
+          </p>
+        </div>
+        <iframe v-else :src="mediaUrl" class="media-frame" frameborder="0"></iframe>
       </div>
     </div>
   </div>
@@ -24,7 +33,8 @@
 <script setup>
 defineProps({
   visible: { type: Boolean, default: false },
-  mediaUrl: { type: String, default: '' }
+  mediaUrl: { type: String, default: '' },
+  error: { type: String, default: '' }
 });
 
 defineEmits(['close']);
@@ -127,6 +137,36 @@ defineEmits(['close']);
 .media-frame {
   width: 100%;
   height: 100%;
+}
+
+.frame-error {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  background: #0f172a;
+  text-align: center;
+}
+
+.err-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.err-msg {
+  font-size: 13px;
+  color: #fca5a5;
+}
+
+.err-hint {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #94a3b8;
+  max-width: 460px;
 }
 
 @keyframes fadeIn {

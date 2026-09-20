@@ -182,14 +182,37 @@ system:       { device_poweroff: 1, alldata_delete: 1, restore_database: 1 }
 | `plugincenter/plugin_list` | 插件详情（含前端 URL、端口、版本、大小、热插拔信息） |
 | `plugincenter/plugin_control` | **写操作**：启停/安装插件 |
 
-### 3.6 任务中心
+### 3.6 任务中心（可查真实进度与速率）
+
+请求体用 `selector` 数组做筛选，是这组接口的关键：
+
+```json
+{ "selector": [ {"key":"module","value":["filemgr"]},
+                {"key":"type","value":["history"]} ],
+  "page": { "size": 1000, "id": 1 } }
+```
 
 | 接口 | 用途 |
 |------|------|
-| `taskcenter/get_taskinfo` | 任务详情（需参数） |
-| `taskcenter/get_task_status` | 任务状态（需参数） |
-| `taskcenter/ctrl_task` | **写操作**：暂停/继续/取消任务 |
-| `taskcenter/delete_history` | **写操作**：删除历史记录 |
+| `taskcenter/get_task_status` | 计数概览：`running_cnt` / `success_cnt` / `failed_cnt` / `stop_cnt` |
+| `taskcenter/get_taskinfo` | 任务列表；`type` 取 `history` 或 `running` |
+| `taskcenter/ctrl_task` | **写操作**：暂停/继续/取消 |
+| `taskcenter/delete_history` | **写操作**：删除历史（按 `task_id` 或 `module`+`status`） |
+
+任务项字段（实测）：
+
+```
+task_id  module  action  status  src[]  dst  src_type
+create_time  done_time
+detail: { progress(0-100), speed("1.2MB/s"), total_size, handle_size,
+          total_files, handled_files, err_code, err_msg }
+```
+
+- `action` 取值实测有 `remove`，UI 里还映射了 `copy` / `move` / `compress` /
+  `decompress` / `upload` / `download` / `rename`。
+- `speed` 是 NAS 给的**带单位字符串**（如 `"1.2MB/s"`），空闲/已完成时为空串。
+- 进行中的任务靠它拿速率；已完成任务 `progress` 为 100、`speed` 为空。
+- 上传/下载任务本身也走 `module: "filemgr"`，所以这一个接口覆盖传输进度。
 
 ### 3.7 播放与转码
 
@@ -223,7 +246,37 @@ data.data.resolution_list[]
 | `safebox/check_safebox_task` / `reset_safebox` | 任务查询 / 重置 |
 | `safebox/verify_xiaomi_account` | 验证小米账号 |
 
-### 3.9 其他
+### 3.9 插件页面（影视墙）如何访问
+
+**这是之前影视墙打不开的原因**：URL 拼错了三层。
+
+官方 `index-DM3JDHLo.js` 的 `getPluginURL()` 明确了规则：
+
+```js
+// https://localhost:443 -> https://<baseIp>:<urlport>
+// http  -> webport
+// https -> getCurrentBaseport()（即隧道 urlport）
+```
+
+所以 `get_app_list` 里给的
+`https://localhost:443/plugin/<uid>/mediacenter/index.html#/filmAndTelevisionWall_pc`
+实际应访问的是 **`https://127.0.0.1:<urlport>/plugin/<uid>/mediacenter/index.html`**：
+
+| 之前的错误 | 正确做法 |
+|-----------|---------|
+| 用 `webport`（明文端口） | 用 `urlport`（mTLS 端口） |
+| 用 `http://` | 用 `https://` |
+| 路径写 `/plugin/mediacenter/`（缺 uid） | `/plugin/<uid>/mediacenter/index.html` |
+| 没带 token → 403 | 必须带 `Cookie: token=...` 或 `Authorization` |
+
+浏览器无法直接打开它：自签证书 + 需要注入 token。因此网页版由
+**网关代理** `/plugin/*`：注入 token 后转发到 `urlport`，再把页面交给 iframe。
+实测代理后 iframe 内能完整渲染影视墙（"最近观看/全部媒体库/4K/蓝光…"等筛选栏）。
+
+> 注意 `mediali/frontend.url` 里的端口 `443` 是**占位符**，不是真的 443 ——
+> 本机 443 并无监听。真实端口始终是隧道动态分配的 `urlport`。
+
+### 3.10 其他
 
 | 接口 | 用途 |
 |------|------|
@@ -325,7 +378,8 @@ MQTT 消息原样透传给渲染层，**字段名由 NAS 决定**——逆向时
 | 缩略图 | ✅ 真实（方案不同） | 经 WebDAV 取原图 + 本地缓存 |
 | 视频播放与清晰度 | ✅ 真实 | `player/transcode_*` |
 | 内存占用率 / CPU 型号 | ❌ 不展示 | 官方 API 未开放 |
-| 任务中心 / 风扇设置 / 保险箱 | ❌ 不展示 | 只读查询接口需参数或属写操作，网页版不做 |
+| 任务中心（进度/速率） | ✅ 真实 | `taskcenter/get_taskinfo` + `get_task_status` |
+| 风扇设置 / 保险箱 | ❌ 不展示 | 属写操作，网页版不做 |
 
 ---
 
