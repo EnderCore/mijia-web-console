@@ -206,6 +206,17 @@
             </div>
             
             <div class="bar-actions">
+              <!-- 切换分栏视图开关 -->
+              <button 
+                class="miller-toggle-btn"
+                :class="{ active: showMillerColumns }"
+                @click="showMillerColumns = !showMillerColumns"
+                title="切换/展开多级分栏流转导航"
+              >
+                <span>🗂️</span>
+                <span>{{ showMillerColumns ? '收起多级分栏' : '多级分栏流转' }}</span>
+              </button>
+
               <span v-if="loadingFolder" class="folder-loading-tag">⚡ 正在读取目录...</span>
               <button 
                 v-if="pathStack.length > 1" 
@@ -217,6 +228,39 @@
               </button>
               <div class="file-summary">
                 共 <b>{{ displayFiles.length }}</b> 个项目
+              </div>
+            </div>
+          </div>
+
+          <!-- 核心新增：文件列表上方多级分栏流转视图 (macOS Finder Miller Columns) -->
+          <div v-if="showMillerColumns" class="miller-columns-container">
+            <div class="miller-columns-scroll" ref="millerScrollRef">
+              <div 
+                v-for="(col, colIdx) in columnChain" 
+                :key="col.path"
+                class="miller-column"
+              >
+                <div class="column-header">
+                  <span class="ch-icon">📁</span>
+                  <span class="ch-title" :title="col.name">{{ col.name }}</span>
+                  <span class="ch-count">{{ col.items.length }}</span>
+                </div>
+                <div class="column-items-list">
+                  <div v-if="col.loading" class="col-loading">读取中...</div>
+                  <div v-else-if="col.items.length === 0" class="col-empty">无子文件夹</div>
+                  <div
+                    v-else
+                    v-for="item in col.items"
+                    :key="item.path"
+                    class="column-item"
+                    :class="{ active: item.selected, 'is-parent': item.isDir }"
+                    @click="handleColumnItemClick(item, colIdx)"
+                  >
+                    <span class="ci-icon">📁</span>
+                    <span class="ci-name" :title="item.name">{{ item.name }}</span>
+                    <span class="ci-arrow" v-if="item.isDir">›</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -341,6 +385,109 @@ const loadingFolder = ref(false);
 // ===== 核心：多级交互式目录树 (Folder Tree State) =====
 const folderTree = ref([]);
 const selectedTreePath = ref('');
+
+// ===== 核心：上方 macOS Finder 式多级分栏流转状态 (Miller Columns) =====
+const showMillerColumns = ref(true);
+const columnChain = ref([]);
+const millerScrollRef = ref(null);
+
+// 构建/对齐当前路径的多级分栏链
+async function syncMillerColumns(targetPath) {
+  if (!ROOT_PATH.value) return;
+  const root = ROOT_PATH.value;
+  const chain = [];
+
+  // 第 1 栏始终是存储根目录
+  const rootCol = {
+    name: '存储空间',
+    path: root,
+    loading: false,
+    items: []
+  };
+  chain.push(rootCol);
+
+  // 解析当前路径相比根路径的各级分段
+  const rel = targetPath.startsWith(root) ? targetPath.slice(root.length) : '';
+  const segs = rel.split('/').filter(Boolean);
+
+  let currentAcc = root;
+  for (let i = 0; i < segs.length; i++) {
+    currentAcc += '/' + segs[i];
+    chain.push({
+      name: segs[i],
+      path: currentAcc,
+      loading: false,
+      items: []
+    });
+  }
+
+  columnChain.value = chain;
+
+  // 异步并发拉取各栏子文件夹
+  await Promise.all(chain.map(async (col, idx) => {
+    col.loading = true;
+    try {
+      const res = await fetch(`/api/files?parent=${encodeURIComponent(col.path)}`);
+      const data = await res.json();
+      if (data.status === 'ok' && data.data?.files) {
+        const dirs = data.data.files.filter(f => f.isDir || f.type === 'dir');
+        // 判定哪一项被选中（属于下一栏的父级）
+        const nextCol = chain[idx + 1];
+        col.items = dirs.map(d => ({
+          name: d.name,
+          path: d.path,
+          isDir: true,
+          selected: nextCol ? nextCol.path === d.path : d.path === targetPath
+        }));
+      }
+    } catch (e) {
+      col.items = [];
+    } finally {
+      col.loading = false;
+    }
+  }));
+
+  // 自动平滑滚动到最右侧最新分栏
+  setTimeout(() => {
+    if (millerScrollRef.value) {
+      millerScrollRef.value.scrollTo({
+        left: millerScrollRef.value.scrollWidth,
+        behavior: 'smooth'
+      });
+    }
+  }, 100);
+}
+
+// 分栏项点击处理
+function handleColumnItemClick(item, colIdx) {
+  // 截断该栏之后的分栏并导航
+  navigateTo(item.path);
+}
+
+// 自动递归展开左侧树状图沿着指定路径的各级节点
+async function autoExpandTreeToPath(targetPath) {
+  if (!targetPath || !folderTree.value.length) return;
+  const root = ROOT_PATH.value;
+  if (!targetPath.startsWith(root)) return;
+
+  const rel = targetPath.slice(root.length);
+  const segs = rel.split('/').filter(Boolean);
+  if (!segs.length) return;
+
+  let currentLevelNodes = folderTree.value;
+  let currentAcc = root;
+
+  for (let i = 0; i < segs.length; i++) {
+    currentAcc += '/' + segs[i];
+    const match = currentLevelNodes.find(n => n.path === currentAcc || n.name === segs[i]);
+    if (match) {
+      if (!match.expanded) {
+        await toggleTreeNode(match);
+      }
+      currentLevelNodes = match.children || [];
+    }
+  }
+}
 
 // ===== 面包屑同级快速跳转下拉 =====
 const activeCrumbIdx = ref(-1);
@@ -508,16 +655,21 @@ async function loadFolder(targetPath) {
   }
 }
 
-// 导航到指定路径
+// 导航到指定路径并联动多级分栏与左侧目录树
 function navigateTo(targetPath) {
   if (targetPath === ROOT_PATH.value) {
     currentPath.value = ROOT_PATH.value;
     pathStack.value = [ROOT_PATH.value];
     currentFolderFiles.value = [];
+    selectedTreePath.value = '';
+    syncMillerColumns(ROOT_PATH.value);
     return;
   }
   pathStack.value.push(targetPath);
+  selectedTreePath.value = targetPath;
   loadFolder(targetPath);
+  syncMillerColumns(targetPath);
+  autoExpandTreeToPath(targetPath);
 }
 
 // 返回上一级
@@ -528,8 +680,13 @@ function navigateUp() {
     if (prev === ROOT_PATH.value) {
       currentPath.value = ROOT_PATH.value;
       currentFolderFiles.value = [];
+      selectedTreePath.value = '';
+      syncMillerColumns(ROOT_PATH.value);
     } else {
       loadFolder(prev);
+      selectedTreePath.value = prev;
+      syncMillerColumns(prev);
+      autoExpandTreeToPath(prev);
     }
   }
 }
@@ -660,13 +817,14 @@ async function deleteFile(file) {
   }
 }
 
-// 监听弹窗显示，恢复根目录并初始化目录树
+// 监听弹窗显示，恢复根目录并初始化目录树与多级分栏
 watch(() => props.visible, (val) => {
   if (val) {
     currentPath.value = ROOT_PATH.value;
     pathStack.value = [ROOT_PATH.value];
     currentFolderFiles.value = [];
     selectedTreePath.value = '';
+    syncMillerColumns(ROOT_PATH.value);
     if (folderTree.value.length === 0) {
       refreshTree();
     }
@@ -678,6 +836,7 @@ watch(() => props.rootPath, (val) => {
   if (val && currentFolderFiles.value.length === 0) {
     currentPath.value = val;
     pathStack.value = [val];
+    syncMillerColumns(val);
     refreshTree();
   }
 });
@@ -1225,6 +1384,156 @@ function handleFileClick(file) {
   color: #94a3b8;
   padding: 4px 8px;
   text-transform: uppercase;
+}
+
+/* 面包屑工具栏操作 */
+.miller-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.miller-toggle-btn:hover {
+  background: #e2e8f0;
+  color: var(--mi-text-main);
+}
+
+.miller-toggle-btn.active {
+  background: #fff7ed;
+  color: var(--mi-orange);
+  border: 1px solid rgba(255, 103, 0, 0.3);
+}
+
+/* 核心：macOS Finder / 飞书级多级分栏流转面板 (Miller Columns) */
+.miller-columns-container {
+  background: #f8fafc;
+  border: 1px solid var(--mi-border);
+  border-radius: var(--mi-radius-md);
+  margin-bottom: 16px;
+  height: 220px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.miller-columns-scroll {
+  display: flex;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.miller-column {
+  width: 220px;
+  min-width: 220px;
+  max-width: 260px;
+  height: 100%;
+  border-right: 1px solid var(--mi-border);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.miller-column:nth-child(even) {
+  background: #fcfdfe;
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mi-border);
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.ch-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ch-count {
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: #64748b;
+}
+
+.column-items-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.column-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.column-item:hover {
+  background: #f1f5f9;
+}
+
+.column-item.active {
+  background: var(--mi-orange);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.column-item.active .ci-icon {
+  filter: brightness(1.2);
+}
+
+.column-item.active .ci-arrow {
+  color: #ffffff;
+  opacity: 1;
+}
+
+.ci-icon {
+  font-size: 14px;
+}
+
+.ci-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ci-arrow {
+  font-size: 14px;
+  font-weight: bold;
+  color: #94a3b8;
+  opacity: 0.7;
+}
+
+.col-loading, .col-empty {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 30px 0;
 }
 
 .crumb-menu-item {
