@@ -992,18 +992,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 图片：经 WebDAV 取原图并落盘缓存
+    // 图片：经 WebDAV 取原图并落盘缓存 (受并发槽位保护，避免拥堵隧道)
     let dav;
+    await acquireThumbnailSlot();
     try {
       await ensureReady();
       dav = await callWebdav("GET", filePath, {}, null, 30000);
     } catch (e) {
+      releaseThumbnailSlot();
       res.writeHead(302, { Location: svgFallback() });
       res.end();
       return;
     }
 
     if (dav.statusCode !== 200) {
+      releaseThumbnailSlot();
       dav.resume();
       res.writeHead(302, { Location: svgFallback() });
       res.end();
@@ -1016,12 +1019,38 @@ const server = http.createServer(async (req, res) => {
       "X-Cache-Lookup": "MISS"
     });
     const writeStream = fs.createWriteStream(localCachedFile);
+    dav.on("end", releaseThumbnailSlot);
+    dav.on("error", releaseThumbnailSlot);
     dav.pipe(writeStream);
     dav.pipe(res);
     return;
   }
 
-  // 7. /api/image 代理 NAS 原厂图标资源 (带本地缓存)
+// 缩略图下载并发信号量控制（最多允许 4 个原图 WebDAV 下载并发，防止瞬间挤爆 P2P 隧道）
+let activeThumbnailJobs = 0;
+const thumbnailQueue = [];
+
+function acquireThumbnailSlot() {
+  return new Promise(resolve => {
+    if (activeThumbnailJobs < 4) {
+      activeThumbnailJobs++;
+      resolve();
+    } else {
+      thumbnailQueue.push(resolve);
+    }
+  });
+}
+
+function releaseThumbnailSlot() {
+  activeThumbnailJobs--;
+  if (thumbnailQueue.length > 0) {
+    const next = thumbnailQueue.shift();
+    activeThumbnailJobs++;
+    next();
+  }
+}
+
+// 7. /api/image 代理 NAS 原厂图标资源 (带本地缓存)
   if (pathname === "/api/image") {
     const src = parsedUrl.searchParams.get("src");
     if (!src) {

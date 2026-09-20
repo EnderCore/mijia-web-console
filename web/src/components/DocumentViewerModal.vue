@@ -19,18 +19,23 @@
 
       <!-- 预览核心展示区 -->
       <div class="doc-body">
-        <!-- 1. PDF 预览 (支持 object / iframe 多级兼容与无插件回退) -->
+        <!-- 1. PDF 预览 (内存安全 Blob 沙箱直显，阻断浏览器跨域/未知流下载触发) -->
         <div v-if="docCategory === 'pdf'" class="body-frame-box">
-          <object :data="fileStreamUrl" type="application/pdf" class="pdf-frame">
-            <iframe :src="fileStreamUrl" class="pdf-frame" frameborder="0">
-              <div class="pdf-fallback-box">
-                <p>当前浏览器环境未能直接嵌入 PDF 预览插件</p>
-                <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">
-                  📥 点击下载该 PDF 文件
-                </a>
-              </div>
-            </iframe>
-          </object>
+          <div v-if="loadingPdf" class="pdf-loading-box">
+            <span class="loading-spin">⚡</span>
+            <span>正在准备 PDF 安全流预览，请稍候...</span>
+          </div>
+          <div v-else-if="pdfError" class="pdf-error-box">
+            <span class="err-icon">⚠️</span>
+            <p>{{ pdfError }}</p>
+            <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">下载后本地查看</a>
+          </div>
+          <iframe 
+            v-else-if="pdfBlobUrl" 
+            :src="pdfBlobUrl" 
+            class="pdf-frame" 
+            frameborder="0"
+          ></iframe>
         </div>
 
         <!-- 2. 文本 / 代码 / Markdown 预览 -->
@@ -91,6 +96,35 @@ const textContent = ref('');
 const loadingText = ref(false);
 const textError = ref('');
 
+// PDF 专属状态：拉入内存生成 blob: 协议本地沙箱 URL，
+// Chrome/Edge/Firefox 会直接调用无损查看器，彻底阻断远程下载拦截
+const pdfBlobUrl = ref('');
+const loadingPdf = ref(false);
+const pdfError = ref('');
+
+async function loadPdfBlob() {
+  if (!props.file?.path) return;
+  loadingPdf.value = true;
+  pdfError.value = '';
+  if (pdfBlobUrl.value) {
+    URL.revokeObjectURL(pdfBlobUrl.value);
+    pdfBlobUrl.value = '';
+  }
+  try {
+    const res = await fetch(fileStreamUrl.value);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: 拉取 PDF 失败`);
+    const blob = await res.blob();
+    // 强制声明为 application/pdf 类型
+    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+    pdfBlobUrl.value = URL.createObjectURL(pdfBlob);
+  } catch (e) {
+    console.error('PDF Blob 加载失败:', e);
+    pdfError.value = '在线解析失败：' + (e.message || '网络异常');
+  } finally {
+    loadingPdf.value = false;
+  }
+}
+
 const fileStreamUrl = computed(() => {
   if (!props.file?.path) return '';
   return `/api/stream?path=${encodeURIComponent(props.file.path)}`;
@@ -140,8 +174,17 @@ async function fetchText() {
 }
 
 watch(() => props.visible, (val) => {
-  if (val && docCategory.value === 'text') {
-    fetchText();
+  if (val) {
+    if (docCategory.value === 'text') {
+      fetchText();
+    } else if (docCategory.value === 'pdf') {
+      loadPdfBlob();
+    }
+  } else {
+    if (pdfBlobUrl.value) {
+      URL.revokeObjectURL(pdfBlobUrl.value);
+      pdfBlobUrl.value = '';
+    }
   }
 });
 </script>
@@ -254,6 +297,29 @@ watch(() => props.visible, (val) => {
 .body-frame-box {
   width: 100%;
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #525659;
+}
+
+.pdf-loading-box, .pdf-error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.loading-spin {
+  font-size: 28px;
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+.err-icon {
+  font-size: 32px;
 }
 
 .pdf-frame {
