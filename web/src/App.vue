@@ -29,6 +29,25 @@
       @open-theme="showThemeModal = true"
     />
 
+    <!-- 苏联/先锋构成主义风格专属：头条号外与工业生产力标语报头 -->
+    <div v-if="currentTheme.isConstructivism" class="constructivist-gazette-masthead">
+      <div class="gazette-flag">ПРАВДА // ВСЯ ВЛАСТЬ ДАННЫМ</div>
+      <div class="gazette-headline">
+        <span class="gazette-stamp">СССР-2026</span>
+        <h2>小米智能存储：双盘镜像分布式数据终端</h2>
+        <span class="gazette-slogan">« НАДЁЖНОСТЬ • АВТОНОМИЯ • БЫСТРОДЕЙСТВИЕ »</span>
+      </div>
+      <div class="gazette-meta-strip">
+        <span>ВЫПУСК № 1181294988</span>
+        <span>|</span>
+        <span>РАЗДЕЛ: АРХИТЕКТУРА P2P/mTLS</span>
+        <span>|</span>
+        <span>СТАТУС: {{ isOnline ? 'АКТИВЕН (НА СВЯЗИ)' : 'АВТОНОМНЫЙ РЕЖИМ' }}</span>
+        <span>|</span>
+        <span>СКОРОСТЬ ПЕРЕДАЧИ: БЕЗ ОГРАНИЧЕНИЙ</span>
+      </div>
+    </div>
+
     <!-- 主界面内容区 (仿米家卡片式极简布局) -->
     <main class="main-content">
       <!-- 实时推送通知条（MQTT 经 SSE 转发） -->
@@ -1217,6 +1236,84 @@ onUnmounted(() => {
 
 .retry-btn:hover {
   opacity: 0.9;
+}
+
+/* 苏俄构成主义报头横幅 (Gazette Masthead) */
+.constructivist-gazette-masthead {
+  max-width: 1440px;
+  margin: 16px auto 0;
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+}
+
+.gazette-flag {
+  display: inline-block;
+  background: #d92027;
+  color: #ffffff;
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  width: fit-content;
+  border: 2px solid #0a0a0a;
+  box-shadow: 3px 3px 0px #0a0a0a;
+  transform: rotate(-1deg);
+}
+
+.gazette-headline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 4px solid #0a0a0a;
+  border-bottom: 2px solid #0a0a0a;
+  padding: 10px 0;
+  background: #f4f1ea;
+  border-left: 8px solid #0a0a0a;
+  border-right: 8px solid #0a0a0a;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.gazette-stamp {
+  background: #0a0a0a;
+  color: #f4f1ea;
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: 16px;
+  padding: 4px 8px;
+  letter-spacing: 1px;
+}
+
+.gazette-headline h2 {
+  font-family: Impact, "Franklin Gothic Heavy", "Arial Black", sans-serif;
+  font-size: 24px;
+  letter-spacing: 1px;
+  color: #0a0a0a;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.gazette-slogan {
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: 14px;
+  color: #d92027;
+  letter-spacing: 1px;
+}
+
+.gazette-meta-strip {
+  display: flex;
+  gap: 12px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0a0a0a;
+  background: #f4f1ea;
+  border: 2px solid #0a0a0a;
+  padding: 4px 12px;
+  border-top: none;
 }
 
 .dashboard-grid {

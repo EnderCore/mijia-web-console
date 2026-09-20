@@ -157,16 +157,54 @@ html.theme-constructivism .storage-card::after,
 html.theme-constructivism .chart-card::after,
 html.theme-constructivism .grid-card::after,
 html.theme-constructivism .recent-card::after {
-  content: "";
+  content: "№ 01";
   position: absolute;
   top: 0;
   right: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 24px 24px 0;
-  border-color: transparent #d92027 transparent transparent;
+  background: #d92027;
+  color: #ffffff;
+  font-family: Impact, "Arial Black", monospace;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 8px;
+  letter-spacing: 1px;
+  border-left: 2px solid #0a0a0a;
+  border-bottom: 2px solid #0a0a0a;
   pointer-events: none;
+}
+
+html.theme-constructivism .chart-card::after { content: "№ 02"; }
+html.theme-constructivism .grid-card::after { content: "№ 03"; }
+html.theme-constructivism .recent-card::after { content: "№ 04"; }
+
+/* 苏联宣传画/报刊木刻版画风格图片滤镜（高反差与粗糙颗粒网点） */
+html.theme-constructivism .media-img,
+html.theme-constructivism .preview-thumb {
+  filter: contrast(125%) saturate(85%) sepia(15%) !important;
+  border: 2px solid #0a0a0a !important;
+  border-radius: 0px !important;
+}
+
+/* 构成主义进度条：双色工业标尺风格 */
+html.theme-constructivism .progress-bar,
+html.theme-constructivism .t-prog {
+  background: #0a0a0a !important;
+  height: 14px !important;
+  border-radius: 0px !important;
+  border: 2px solid #0a0a0a !important;
+  padding: 1px;
+}
+
+html.theme-constructivism .progress-fill,
+html.theme-constructivism .t-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    #d92027,
+    #d92027 8px,
+    #0a0a0a 8px,
+    #0a0a0a 16px
+  ) !important;
+  border-radius: 0px !important;
 }
 
 html.theme-constructivism .card-header h3,
@@ -174,11 +212,11 @@ html.theme-constructivism .section-hdr h3,
 html.theme-constructivism .device-name {
   font-family: Impact, "Arial Black", "PingFang SC", sans-serif !important;
   text-transform: uppercase !important;
-  letter-spacing: 1px !important;
+  letter-spacing: 1.5px !important;
   font-size: 18px !important;
   color: #0a0a0a !important;
-  border-left: 5px solid #d92027;
-  padding-left: 8px;
+  border-left: 6px solid #d92027;
+  padding-left: 10px;
 }
 
 html.theme-constructivism button,
