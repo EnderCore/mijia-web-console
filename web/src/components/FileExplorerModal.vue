@@ -402,40 +402,51 @@ const showMillerColumns = ref(true);
 const columnChain = ref([]);
 const millerScrollRef = ref(null);
 
-// 关键优化：分栏目录内存级高速缓存池 (Map<path, folderList>)
-// 已经加载过的分栏子目录 100% 永久驻留内存，再次浏览 0ms 秒出，绝不重拉！
+// 关键优化：标准绝对路径清理函数 (消除中文字符/百分号编码不一致导致的清空 Bug)
+function cleanPath(p) {
+  if (!p) return '';
+  try {
+    return decodeURIComponent(p).replace(/\/+$/, '');
+  } catch (e) {
+    return p.replace(/\/+$/, '');
+  }
+}
+
+// 分栏目录内存级高速缓存池 (Map<path, folderList>)
 const columnCache = new Map();
 
 async function fetchSubdirs(dirPath) {
-  if (columnCache.has(dirPath)) {
-    return columnCache.get(dirPath);
+  const normPath = cleanPath(dirPath);
+  if (columnCache.has(normPath)) {
+    return columnCache.get(normPath);
   }
   try {
-    const res = await fetch(`/api/files?parent=${encodeURIComponent(dirPath)}`);
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(normPath)}`);
     const data = await res.json();
     if (data.status === 'ok' && data.data?.files) {
       const dirs = data.data.files
         .filter(f => f.isDir || f.type === 'dir')
-        .map(d => ({ name: d.name, path: d.path, isDir: true }));
-      columnCache.set(dirPath, dirs);
+        .map(d => ({ name: d.name, path: cleanPath(d.path), isDir: true }));
+      columnCache.set(normPath, dirs);
       return dirs;
     }
   } catch (e) {
     console.error('获取分栏子文件夹失败:', e);
   }
-  columnCache.set(dirPath, []);
+  columnCache.set(normPath, []);
   return [];
 }
 
-// 增量构建/对齐当前路径的多级分栏链（Finder 式无感增量更新）
+// 增量构建/对齐当前路径的多级分栏链 (彻底解决中文路径匹配失效与树消失问题)
 async function syncMillerColumns(targetPath) {
   if (!ROOT_PATH.value) return;
-  const root = ROOT_PATH.value;
+  const root = cleanPath(ROOT_PATH.value);
+  const target = cleanPath(targetPath) || root;
 
   // 1. 计算当前目标路径应当拥有的分栏路径数组
   const expectedPaths = [root];
-  if (targetPath.startsWith(root) && targetPath !== root) {
-    const rel = targetPath.slice(root.length);
+  if (target.startsWith(root) && target !== root) {
+    const rel = target.slice(root.length);
     const segs = rel.split('/').filter(Boolean);
     let acc = root;
     for (const s of segs) {
@@ -450,12 +461,12 @@ async function syncMillerColumns(targetPath) {
   while (
     commonPrefixLen < existing.length &&
     commonPrefixLen < expectedPaths.length &&
-    existing[commonPrefixLen].path === expectedPaths[commonPrefixLen]
+    cleanPath(existing[commonPrefixLen].path) === expectedPaths[commonPrefixLen]
   ) {
     commonPrefixLen++;
   }
 
-  // 截断不匹配的多余后序分栏，保留已经渲染好的前序分栏（绝不闪烁、绝不推倒重来！）
+  // 截断不匹配的多余后序分栏，保留已经渲染好的前序分栏
   const newChain = existing.slice(0, commonPrefixLen);
 
   // 补齐缺失的新分栏
@@ -471,33 +482,34 @@ async function syncMillerColumns(targetPath) {
     });
   }
 
-  // 3. 原地更新选中高亮状态（不用重建组件）
+  // 3. 原地更新选中高亮状态
   newChain.forEach((col, idx) => {
     const nextCol = newChain[idx + 1];
-    const targetSelectedPath = nextCol ? nextCol.path : targetPath;
+    const targetSelectedPath = nextCol ? nextCol.path : target;
     col.items.forEach(item => {
-      item.selected = (item.path === targetSelectedPath);
+      item.selected = (cleanPath(item.path) === targetSelectedPath);
     });
   });
 
   columnChain.value = newChain;
 
-  // 4. 仅对尚未缓存的新分栏发起静默异步拉取
+  // 4. 仅对尚未缓存的新分栏发起异步静默拉取
   await Promise.all(newChain.map(async (col, idx) => {
-    if (!columnCache.has(col.path)) {
+    const p = cleanPath(col.path);
+    if (!columnCache.has(p)) {
       col.loading = true;
-      const dirs = await fetchSubdirs(col.path);
+      const dirs = await fetchSubdirs(p);
       const nextCol = newChain[idx + 1];
-      const targetSelectedPath = nextCol ? nextCol.path : targetPath;
+      const targetSelectedPath = nextCol ? cleanPath(nextCol.path) : target;
       col.items = dirs.map(d => ({
         ...d,
-        selected: d.path === targetSelectedPath
+        selected: cleanPath(d.path) === targetSelectedPath
       }));
       col.loading = false;
     }
   }));
 
-  // 5. 自动平滑向右滚动到最新一栏
+  // 5. 平滑滚动到最右侧最新分栏
   setTimeout(() => {
     if (millerScrollRef.value) {
       millerScrollRef.value.scrollTo({
@@ -516,10 +528,11 @@ function handleColumnItemClick(item, colIdx) {
 // 自动递归展开左侧树状图沿着指定路径的各级节点
 async function autoExpandTreeToPath(targetPath) {
   if (!targetPath || !folderTree.value.length) return;
-  const root = ROOT_PATH.value;
-  if (!targetPath.startsWith(root)) return;
+  const root = cleanPath(ROOT_PATH.value);
+  const target = cleanPath(targetPath);
+  if (!target.startsWith(root)) return;
 
-  const rel = targetPath.slice(root.length);
+  const rel = target.slice(root.length);
   const segs = rel.split('/').filter(Boolean);
   if (!segs.length) return;
 
@@ -528,7 +541,7 @@ async function autoExpandTreeToPath(targetPath) {
 
   for (let i = 0; i < segs.length; i++) {
     currentAcc += '/' + segs[i];
-    const match = currentLevelNodes.find(n => n.path === currentAcc || n.name === segs[i]);
+    const match = currentLevelNodes.find(n => cleanPath(n.path) === currentAcc || n.name === segs[i]);
     if (match) {
       if (!match.expanded) {
         await toggleTreeNode(match);
