@@ -102,21 +102,50 @@
             <span class="section-tag">半透明与毛玻璃</span>
           </div>
 
+          <!-- 磨砂范围切换器（核心体验：透出壁纸 vs 全局模糊） -->
+          <div class="blur-scope-selector">
+            <label class="scope-option" :class="{ active: currentTheme.blurScope === 'controls_only' }">
+              <input
+                type="radio"
+                value="controls_only"
+                v-model="currentTheme.blurScope"
+                @change="updateStyles"
+              />
+              <div class="scope-text">
+                <strong>仅按钮与控件磨砂 (推荐)</strong>
+                <span>大容器高透不模糊，背景壁纸清晰完整展现，控件晶莹磨砂</span>
+              </div>
+            </label>
+
+            <label class="scope-option" :class="{ active: currentTheme.blurScope === 'all_containers' }">
+              <input
+                type="radio"
+                value="all_containers"
+                v-model="currentTheme.blurScope"
+                @change="updateStyles"
+              />
+              <div class="scope-text">
+                <strong>全局容器磨砂</strong>
+                <span>包括大卡片在内的所有容器整体施加厚重高斯毛玻璃</span>
+              </div>
+            </label>
+          </div>
+
           <div class="slider-group">
-            <div class="slider-row">
-              <span class="slider-label">卡片半透明度</span>
+            <div class="slider-row" v-if="currentTheme.blurScope === 'controls_only'">
+              <span class="slider-label">控件磨砂半径</span>
               <input
                 type="range"
-                min="30"
-                max="100"
-                v-model.number="currentTheme.cardOpacity"
+                min="0"
+                max="30"
+                v-model.number="currentTheme.controlBlur"
                 @input="updateStyles"
               />
-              <span class="slider-val">{{ currentTheme.cardOpacity }}%</span>
+              <span class="slider-val">{{ currentTheme.controlBlur ?? 16 }}px</span>
             </div>
 
-            <div class="slider-row">
-              <span class="slider-label">磨砂模糊半径</span>
+            <div class="slider-row" v-if="currentTheme.blurScope === 'all_containers'">
+              <span class="slider-label">卡片磨砂半径</span>
               <input
                 type="range"
                 min="0"
@@ -128,7 +157,19 @@
             </div>
 
             <div class="slider-row">
-              <span class="slider-label">饱和度增强</span>
+              <span class="slider-label">容器透光度</span>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                v-model.number="currentTheme.cardOpacity"
+                @input="updateStyles"
+              />
+              <span class="slider-val">{{ currentTheme.cardOpacity }}%</span>
+            </div>
+
+            <div class="slider-row">
+              <span class="slider-label">色彩饱和度</span>
               <input
                 type="range"
                 min="100"
@@ -356,6 +397,57 @@ async function handleImportFile(e) {
   font-weight: 700;
   padding: 2px 6px;
   border-bottom-left-radius: 8px;
+}
+
+/* 磨砂范围单选框 */
+.blur-scope-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: white;
+  border: 1.5px solid var(--mi-border);
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.scope-option:hover {
+  border-color: var(--mi-orange);
+}
+
+.scope-option.active {
+  border-color: var(--mi-orange);
+  background: rgba(255, 103, 0, 0.04);
+}
+
+.scope-option input {
+  margin-top: 2px;
+  accent-color: var(--mi-orange);
+}
+
+.scope-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scope-text strong {
+  font-size: 12px;
+  color: var(--mi-text-main);
+}
+
+.scope-text span {
+  font-size: 10px;
+  color: var(--mi-text-sub);
+  line-height: 1.3;
 }
 
 /* 上传行 */

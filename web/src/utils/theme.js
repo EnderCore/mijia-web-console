@@ -43,42 +43,49 @@ export const PRESETS = {
   mica: {
     id: 'mica',
     name: '云母磨砂 (Mica Glass)',
-    description: '微软云母与亚克力毛玻璃质感，透亮磨砂卡片搭配细腻微光',
+    description: '微软云母与亚克力毛玻璃质感，透亮背景与晶莹控件磨砂',
     bgEnabled: true,
-    bgBrightness: 92,
-    bgBlur: 8,
+    bgBrightness: 95,
+    bgBlur: 0, // 默认不糊背景，完整透出清晰壁纸
     bgOpacity: 90,
-    bgTint: 'rgba(15, 23, 42, 0.45)',
-    cardBg: 'rgba(255, 255, 255, 0.72)',
-    cardOpacity: 78,
-    cardBlur: 18,
-    cardSaturate: 180,
-    cardBorder: 'rgba(255, 255, 255, 0.55)',
-    cardShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.12)',
+    bgTint: 'rgba(15, 23, 42, 0.25)',
+    cardBg: 'rgba(255, 255, 255, 0.45)', // 大容器高透
+    cardOpacity: 55,
+    cardBlur: 0, // 大容器不模糊，避免挡住整片壁纸
+    cardSaturate: 160,
+    cardBorder: 'rgba(255, 255, 255, 0.4)',
+    cardShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
     accentColor: '#0ea5e9',
     primaryFont: 'sans-serif',
     borderRadius: '16px',
-    isConstructivism: false
+    isConstructivism: false,
+    // 关键模式：'controls_only'（仅按钮和控件磨砂，背景完全透光清晰） vs 'all_containers'（全局卡片模糊）
+    blurScope: 'controls_only',
+    controlBlur: 16,
+    controlOpacity: 70
   },
   constructivism: {
     id: 'constructivism',
     name: '构成主义 (Constructivism)',
-    description: '20世纪先锋构成主义与包豪斯机械美学：红黑几何色块、硬朗直角与工程排版',
-    bgEnabled: true,
-    bgBrightness: 95,
+    description: '20世纪苏俄先锋构成主义：非对称几何张力网格、红黑高对比、倾斜色块与重型工业排版',
+    bgEnabled: false,
+    bgBrightness: 100,
     bgBlur: 0,
-    bgOpacity: 92,
-    bgTint: 'rgba(235, 232, 222, 0.85)',
-    cardBg: '#f4f1ea',
-    cardOpacity: 96,
+    bgOpacity: 100,
+    bgTint: 'transparent',
+    cardBg: '#f2efe9', // 经典前卫先锋米浆灰/牛皮纸基调
+    cardOpacity: 100,
     cardBlur: 0,
-    cardSaturate: 120,
-    cardBorder: '#18181b',
-    cardShadow: '6px 6px 0px #09090b',
-    accentColor: '#dc2626',
-    primaryFont: '"Impact", "Arial Black", "PingFang SC", sans-serif',
+    cardSaturate: 100,
+    cardBorder: '#111111',
+    cardShadow: '6px 6px 0px #111111',
+    accentColor: '#d92027', // 革命红标色
+    primaryFont: '"Impact", "Franklin Gothic Heavy", "Arial Black", "PingFang SC", sans-serif',
     borderRadius: '0px',
-    isConstructivism: true
+    isConstructivism: true,
+    blurScope: 'none',
+    controlBlur: 0,
+    controlOpacity: 100
   }
 };
 
@@ -233,12 +240,23 @@ export function applyTheme() {
     root.style.setProperty('--mi-card-border', t.cardBorder);
     root.style.setProperty('--mi-card-shadow', t.cardShadow);
 
+    // 控件/按钮专属磨砂参数注入
+    root.style.setProperty('--mi-control-blur', `${t.controlBlur ?? 16}px`);
+    root.style.setProperty('--mi-control-opacity', `${(t.controlOpacity ?? 70) / 100}`);
+
     if (t.isConstructivism) {
       root.classList.add('theme-constructivism');
-      root.classList.remove('theme-mica');
+      root.classList.remove('theme-mica', 'theme-mica-controls-only', 'theme-mica-all-containers');
     } else {
       root.classList.add('theme-mica');
       root.classList.remove('theme-constructivism');
+      if (t.blurScope === 'controls_only') {
+        root.classList.add('theme-mica-controls-only');
+        root.classList.remove('theme-mica-all-containers');
+      } else {
+        root.classList.add('theme-mica-all-containers');
+        root.classList.remove('theme-mica-controls-only');
+      }
     }
   }
 

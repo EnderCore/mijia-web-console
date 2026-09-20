@@ -31,29 +31,108 @@ html.theme-mica {
   --mi-text-sub: #475569;
 }
 
-html.theme-mica .top-header,
-html.theme-mica .storage-card,
-html.theme-mica .chart-card,
-html.theme-mica .grid-card,
-html.theme-mica .recent-card,
-html.theme-mica .app-footer,
-html.theme-mica .custom-modal,
-html.theme-mica .explorer-modal {
+/* 模式 1：仅按钮和控件磨砂（核心推荐：大容器高透，壁纸清晰，控件磨砂发光） */
+html.theme-mica-controls-only .top-header,
+html.theme-mica-controls-only .storage-card,
+html.theme-mica-controls-only .chart-card,
+html.theme-mica-controls-only .grid-card,
+html.theme-mica-controls-only .recent-card,
+html.theme-mica-controls-only .app-footer,
+html.theme-mica-controls-only .custom-modal,
+html.theme-mica-controls-only .explorer-modal {
   background: var(--mi-card-bg) !important;
-  backdrop-filter: blur(var(--mi-backdrop-blur)) saturate(var(--mi-backdrop-saturate)) !important;
-  -webkit-backdrop-filter: blur(var(--mi-backdrop-blur)) saturate(var(--mi-backdrop-saturate)) !important;
+  backdrop-filter: none !important; /* 不模糊大容器，让壁纸高清通透 */
+  -webkit-backdrop-filter: none !important;
   border: 1px solid var(--mi-card-border) !important;
   box-shadow: var(--mi-card-shadow) !important;
 }
 
-/* 构成主义先锋艺术主题 (Constructivism UI) */
+/* 控件、按钮、标签、输入框单独施加精致的磨砂毛玻璃 */
+html.theme-mica-controls-only button,
+html.theme-mica-controls-only .tab-btn,
+html.theme-mica-controls-only .mask-btn,
+html.theme-mica-controls-only .theme-nav-btn,
+html.theme-mica-controls-only .explorer-nav-btn,
+html.theme-mica-controls-only .refresh-btn,
+html.theme-mica-controls-only .stat-pill,
+html.theme-mica-controls-only .online-badge,
+html.theme-mica-controls-only .app-item,
+html.theme-mica-controls-only .media-item,
+html.theme-mica-controls-only .file-card,
+html.theme-mica-controls-only .card-actions,
+html.theme-mica-controls-only .io-btn,
+html.theme-mica-controls-only .action-btn,
+html.theme-mica-controls-only .preset-card {
+  background: rgba(255, 255, 255, var(--mi-control-opacity, 0.65)) !important;
+  backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+}
+
+html.theme-mica-controls-only .explorer-nav-btn {
+  background: linear-gradient(135deg, rgba(255, 103, 0, 0.85), rgba(255, 133, 51, 0.85)) !important;
+  backdrop-filter: blur(var(--mi-control-blur, 16px)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+/* 模式 2：全部容器全局磨砂 */
+html.theme-mica-all-containers .top-header,
+html.theme-mica-all-containers .storage-card,
+html.theme-mica-all-containers .chart-card,
+html.theme-mica-all-containers .grid-card,
+html.theme-mica-all-containers .recent-card,
+html.theme-mica-all-containers .app-footer,
+html.theme-mica-all-containers .custom-modal,
+html.theme-mica-all-containers .explorer-modal {
+  background: var(--mi-card-bg) !important;
+  backdrop-filter: blur(var(--mi-backdrop-blur, 18px)) saturate(var(--mi-backdrop-saturate, 180%)) !important;
+  -webkit-backdrop-filter: blur(var(--mi-backdrop-blur, 18px)) saturate(var(--mi-backdrop-saturate, 180%)) !important;
+  border: 1px solid var(--mi-card-border) !important;
+  box-shadow: var(--mi-card-shadow) !important;
+}
+
+/* 构成主义先锋艺术视觉体系 (Constructivism UI) */
 html.theme-constructivism {
+  --mi-bg: #e8e4d9 !important;
   --mi-radius-lg: 0px !important;
   --mi-radius-md: 0px !important;
   --mi-radius-sm: 0px !important;
-  --mi-text-main: #09090b !important;
-  --mi-text-sub: #52525b !important;
-  --mi-border: #18181b !important;
+  --mi-text-main: #0a0a0a !important;
+  --mi-text-sub: #404040 !important;
+  --mi-border: #0a0a0a !important;
+  --mi-orange: #d92027 !important;
+  --mi-card-bg: #f4f1ea !important;
+}
+
+html.theme-constructivism body {
+  background-color: #e8e4d9 !important;
+  background-image: 
+    radial-gradient(#111 1px, transparent 1px),
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px, 120px 120px;
+}
+
+/* 构成主义专属排版与非对称张力网格 */
+html.theme-constructivism .dashboard-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1.6fr !important;
+  gap: 28px !important;
+  position: relative;
+}
+
+html.theme-constructivism .dashboard-grid::before {
+  content: "КОНСТРУКТИВИЗМ // SYSTEM-01";
+  position: absolute;
+  top: -30px;
+  left: 0;
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: 14px;
+  letter-spacing: 2px;
+  background: #d92027;
+  color: #ffffff;
+  padding: 2px 10px;
+  transform: skewX(-12deg);
 }
 
 html.theme-constructivism .top-header,
@@ -66,23 +145,81 @@ html.theme-constructivism .custom-modal,
 html.theme-constructivism .explorer-modal,
 html.theme-constructivism .file-card,
 html.theme-constructivism .column-box {
-  background: var(--mi-card-bg) !important;
-  border: 2px solid #18181b !important;
+  background: #f4f1ea !important;
+  border: 3px solid #0a0a0a !important;
   border-radius: 0px !important;
-  box-shadow: var(--mi-card-shadow) !important;
+  box-shadow: 6px 6px 0px #0a0a0a !important;
+  position: relative;
 }
 
-html.theme-constructivism button {
+/* 构成主义几何红黑角标与斜切斜线装饰 */
+html.theme-constructivism .storage-card::after,
+html.theme-constructivism .chart-card::after,
+html.theme-constructivism .grid-card::after,
+html.theme-constructivism .recent-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 24px 24px 0;
+  border-color: transparent #d92027 transparent transparent;
+  pointer-events: none;
+}
+
+html.theme-constructivism .card-header h3,
+html.theme-constructivism .section-hdr h3,
+html.theme-constructivism .device-name {
+  font-family: Impact, "Arial Black", "PingFang SC", sans-serif !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  font-size: 18px !important;
+  color: #0a0a0a !important;
+  border-left: 5px solid #d92027;
+  padding-left: 8px;
+}
+
+html.theme-constructivism button,
+html.theme-constructivism .mask-btn,
+html.theme-constructivism .theme-nav-btn,
+html.theme-constructivism .explorer-nav-btn,
+html.theme-constructivism .tab-btn,
+html.theme-constructivism .stat-pill {
   border-radius: 0px !important;
-  text-transform: uppercase;
+  border: 2px solid #0a0a0a !important;
+  font-weight: 900 !important;
   letter-spacing: 0.5px;
+  box-shadow: 3px 3px 0px #0a0a0a !important;
+  text-transform: uppercase;
+  background: #ffffff !important;
+  color: #0a0a0a !important;
+}
+
+html.theme-constructivism .explorer-nav-btn {
+  background: #d92027 !important;
+  color: #ffffff !important;
+  border-color: #0a0a0a !important;
+}
+
+html.theme-constructivism button:hover {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 5px 5px 0px #0a0a0a !important;
+}
+
+html.theme-constructivism button:active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 1px 1px 0px #0a0a0a !important;
 }
 
 html.theme-constructivism .power-tag {
-  background: #dc2626 !important;
+  background: #0a0a0a !important;
   color: #ffffff !important;
   font-weight: 900 !important;
-  padding: 2px 6px !important;
+  padding: 4px 10px !important;
+  border-radius: 0px !important;
+  border-left: 4px solid #d92027 !important;
 }
 
 * {
