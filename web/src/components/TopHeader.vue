@@ -20,10 +20,10 @@
     </div>
 
     <div class="header-right">
-      <!-- 显式的 OpenList 文件中心快捷按钮 -->
-      <button class="openlist-nav-btn" @click="$emit('open-explorer')">
+      <!-- 文件管理器快捷入口 -->
+      <button class="explorer-nav-btn" @click="$emit('open-explorer')">
         <span class="btn-icon">📁</span>
-        <span>OpenList 文件中心</span>
+        <span>文件管理</span>
       </button>
 
       <div class="stat-pill" v-if="urlPort">
@@ -52,7 +52,7 @@ defineEmits(['refresh', 'open-explorer']);
 </script>
 
 <style scoped>
-.openlist-nav-btn {
+.explorer-nav-btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -66,7 +66,7 @@ defineEmits(['refresh', 'open-explorer']);
   transition: all 0.2s;
 }
 
-.openlist-nav-btn:hover {
+.explorer-nav-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(255, 103, 0, 0.35);
 }

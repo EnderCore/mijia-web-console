@@ -5,7 +5,7 @@
       <div class="explorer-header">
         <div class="header-left">
           <span class="icon">📁</span>
-          <h4>全功能文件管理器 (OpenList 模式)</h4>
+          <h4>全功能文件管理器</h4>
           <span class="path-badge">{{ currentPath }}</span>
         </div>
 
@@ -83,11 +83,13 @@
           </div>
 
           <div class="tree-divider"></div>
-          <div class="tree-section-title">WebDAV 外部挂载点</div>
+          <div class="tree-section-title">当前目录</div>
           <div class="mount-box">
-            <div class="mount-label">本地直连 WebDAV 端口</div>
-            <div class="mount-val font-mono">127.0.0.1:51832</div>
-            <div class="mount-sub">支持 OpenList / Rclone 挂载</div>
+            <div class="mount-label">文件总数</div>
+            <div class="mount-val">{{ displayFiles.length }} 项</div>
+            <div class="mount-sub">
+              其中视频 {{ getCategoryCount('video') }} · 图片 {{ getCategoryCount('photo') }}
+            </div>
           </div>
         </aside>
 
@@ -96,7 +98,7 @@
           <!-- 工具栏：面包屑路径 + 排序方式 -->
           <div class="breadcrumb-bar">
             <div class="crumbs">
-              <span class="crumb-root" @click="navigateTo('/home/u2912935973/pool0/data')">🏠 根目录</span>
+              <span class="crumb-root" @click="navigateTo(ROOT_PATH)">🏠 根目录</span>
               <template v-for="(seg, idx) in pathSegments" :key="idx">
                 <span class="crumb-sep">/</span>
                 <span 
@@ -205,14 +207,17 @@ import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  files: { type: Array, default: () => [] }
+  files: { type: Array, default: () => [] },
+  // 用户数据根目录由网关从 WebDAV 凭据推导 (/home/u<UID>/pool0/data)，避免硬编码 UID
+  rootPath: { type: String, default: '' }
 });
 
 const emit = defineEmits(['close', 'play-video', 'preview-photo', 'preview-doc', 'refresh']);
 
-const ROOT_PATH = '/home/u2912935973/pool0/data';
-const currentPath = ref(ROOT_PATH);
-const pathStack = ref([ROOT_PATH]);
+// 网关未返回根路径时保持为空，避免误用他人路径
+const ROOT_PATH = computed(() => props.rootPath || '');
+const currentPath = ref(props.rootPath || '');
+const pathStack = ref([props.rootPath || '']);
 const searchKeyword = ref('');
 const viewMode = ref('grid'); // 'grid' | 'list'
 const activeCategory = ref('all');
@@ -248,10 +253,12 @@ const currentCategoryName = computed(() => {
 
 // 计算面包屑路径分段
 const pathSegments = computed(() => {
-  const rel = currentPath.value.replace(ROOT_PATH, '');
+  const root = ROOT_PATH.value;
+  if (!root) return [];
+  const rel = currentPath.value.replace(root, '');
   if (!rel || rel === '/') return [];
   const parts = rel.split('/').filter(Boolean);
-  let acc = ROOT_PATH;
+  let acc = root;
   return parts.map(p => {
     acc += '/' + p;
     return { name: p, fullPath: acc };
@@ -277,9 +284,9 @@ async function loadFolder(targetPath) {
 
 // 导航到指定路径
 function navigateTo(targetPath) {
-  if (targetPath === ROOT_PATH) {
-    currentPath.value = ROOT_PATH;
-    pathStack.value = [ROOT_PATH];
+  if (targetPath === ROOT_PATH.value) {
+    currentPath.value = ROOT_PATH.value;
+    pathStack.value = [ROOT_PATH.value];
     currentFolderFiles.value = [];
     return;
   }
@@ -292,8 +299,8 @@ function navigateUp() {
   if (pathStack.value.length > 1) {
     pathStack.value.pop();
     const prev = pathStack.value[pathStack.value.length - 1];
-    if (prev === ROOT_PATH) {
-      currentPath.value = ROOT_PATH;
+    if (prev === ROOT_PATH.value) {
+      currentPath.value = ROOT_PATH.value;
       currentFolderFiles.value = [];
     } else {
       loadFolder(prev);
@@ -303,7 +310,7 @@ function navigateUp() {
 
 // 重新加载当前目录
 function reloadCurrent() {
-  if (currentPath.value === ROOT_PATH) {
+  if (currentPath.value === ROOT_PATH.value) {
     emit('refresh');
   } else {
     loadFolder(currentPath.value);
@@ -430,15 +437,23 @@ async function deleteFile(file) {
 // 监听弹窗显示，恢复根目录
 watch(() => props.visible, (val) => {
   if (val) {
-    currentPath.value = ROOT_PATH;
-    pathStack.value = [ROOT_PATH];
+    currentPath.value = ROOT_PATH.value;
+    pathStack.value = [ROOT_PATH.value];
     currentFolderFiles.value = [];
+  }
+});
+
+// 根路径来自网关，可能晚于弹窗打开才能拿到，需同步一次
+watch(() => props.rootPath, (val) => {
+  if (val && currentFolderFiles.value.length === 0) {
+    currentPath.value = val;
+    pathStack.value = [val];
   }
 });
 
 const displayFiles = computed(() => {
   // 如果在子文件夹内，优先显示子文件夹内容；在根目录时显示 props.files
-  let list = (currentPath.value !== ROOT_PATH && currentFolderFiles.value.length > 0)
+  let list = (currentPath.value !== ROOT_PATH.value && currentFolderFiles.value.length > 0)
     ? currentFolderFiles.value
     : props.files;
 
@@ -453,7 +468,7 @@ const displayFiles = computed(() => {
 });
 
 function getCategoryCount(key) {
-  const list = (currentPath.value !== ROOT_PATH && currentFolderFiles.value.length > 0)
+  const list = (currentPath.value !== ROOT_PATH.value && currentFolderFiles.value.length > 0)
     ? currentFolderFiles.value
     : props.files;
   if (key === 'all') return list.length;

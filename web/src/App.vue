@@ -16,14 +16,14 @@
       <!-- 离线提示横幅 -->
       <div v-if="!isOnline" class="offline-banner">
         <div class="banner-content">
-          <span class="banner-icon">⚡</span>
+          <span class="banner-icon">⚠️</span>
           <div class="banner-text">
-            <strong>离线高速模式 (已启用客户端与服务器二级持久缓存)</strong>
-            <span>当前通过内网模拟与本地持久存储提供极速访问，启动官方客户端后将无缝直通真实 NAS 硬件。</span>
+            <strong>未连接到 NAS</strong>
+            <span>{{ statusInfo.message || '请确认小米智能存储官方客户端已在后台运行并登录。' }}</span>
           </div>
         </div>
         <button class="retry-btn" @click="loadAllData" :disabled="refreshing">
-          实时探针
+          {{ refreshing ? '探测中...' : '重新连接' }}
         </button>
       </div>
 
@@ -34,6 +34,7 @@
           <StorageMeter
             :used-bytes="storageData.usedBytes"
             :total-bytes="storageData.totalBytes"
+            :total-is-estimated="storageData.totalIsEstimated"
             :uid="storageData.uid"
             :pool-type="storageData.poolType"
           />
@@ -66,13 +67,13 @@
       <div class="footer-inner">
         <span>米家 Xiaomi Smart Storage Web 控制台 · 硬件级双盘镜像</span>
         <span class="dot">·</span>
-        <span>设备 DID: {{ statusInfo.did || '1181294988' }}</span>
+        <span>设备 DID: {{ statusInfo.did || '未连接' }}</span>
         <span class="dot">·</span>
         <span :class="isOnline ? 'text-green' : 'text-orange'">
-          {{ isOnline ? 'P2P 硬件直通 (127.0.0.1:' + statusInfo.urlPort + ')' : '离线极速缓存模式' }}
+          {{ isOnline ? 'P2P 直通 (127.0.0.1:' + statusInfo.urlPort + ')' : '未连接官方客户端' }}
         </span>
         <span class="dot">·</span>
-        <span>缩略图高速缓存: 已挂载 (IndexedDB + Disk)</span>
+        <span>缩略图缓存: 本地磁盘 (server/cache)</span>
       </div>
     </footer>
 
@@ -87,6 +88,7 @@
     <FileExplorerModal
       :visible="showFileExplorer"
       :files="recentFiles"
+      :root-path="statusInfo.dataRoot || ''"
       @close="showFileExplorer = false"
       @play-video="handlePlayVideo"
       @preview-photo="handlePreviewMedia"
@@ -133,47 +135,18 @@
 
           <!-- 系统设置视图 -->
           <div v-else-if="activeDialog.type === 'settings'" class="settings-view">
-            <div class="setting-row">
-              <div class="setting-meta">
-                <strong>智能风扇转速模式</strong>
-                <span>根据硬盘温度自动静音调速</span>
-              </div>
-              <span class="switch-tag active">自动平衡</span>
-            </div>
-            <div class="setting-row">
-              <div class="setting-meta">
-                <strong>Samba (网络邻居) 协议</strong>
-                <span>局域网内免客户端直接挂载为本地磁盘</span>
-              </div>
-              <span class="switch-tag active">已启用 (端口 445)</span>
-            </div>
-            <div class="setting-row">
-              <div class="setting-meta">
-                <strong>硬件休眠策略</strong>
-                <span>硬盘无读写 15 分钟后自动磁头休眠</span>
-              </div>
-              <span class="switch-tag active">已启用</span>
-            </div>
+            <p class="unavailable-note">
+              官方 LuCI 未开放风扇策略 / Samba / 休眠策略的读写接口，网页版无法读取或修改这些设置。
+              请使用小米智能存储官方客户端进行配置。
+            </p>
           </div>
 
           <!-- 任务中心视图 -->
           <div v-else-if="activeDialog.type === 'task'" class="task-view">
-            <div class="task-card">
-              <div class="t-top">
-                <span>Ubuntu-24.04-LTS-Desktop.iso</span>
-                <span class="text-orange">下载中 (12.4 MB/s)</span>
-              </div>
-              <div class="t-prog"><div class="t-fill" style="width: 68%;"></div></div>
-              <div class="t-bot"><span>3.8 GB / 5.6 GB</span><span>剩余约 2 分钟</span></div>
-            </div>
-            <div class="task-card">
-              <div class="t-top">
-                <span>手机相册增量双向同步任务</span>
-                <span class="text-green">同步完成</span>
-              </div>
-              <div class="t-prog"><div class="t-fill green" style="width: 100%;"></div></div>
-              <div class="t-bot"><span>已同步 1,420 张照片</span><span>双重备份已防护</span></div>
-            </div>
+            <p class="unavailable-note">
+              官方 LuCI 未开放离线下载与同步队列的查询接口，网页版无法展示真实任务进度。
+              请使用小米智能存储官方客户端查看。
+            </p>
           </div>
         </div>
       </div>
@@ -205,9 +178,9 @@
           />
         </div>
         <div class="viewer-footer">
-          <span>分辨率: {{ activeMedia.dim || '原图规格' }}</span>
+          <span>分辨率: {{ activeMedia.dim || '未上报' }}</span>
           <span>文件大小: {{ formatSize(activeMedia.size) }}</span>
-          <span>路径: {{ activeMedia.path || '我的存储' }}</span>
+          <span>路径: {{ activeMedia.path || statusInfo.dataRoot || '未上报' }}</span>
         </div>
       </div>
     </div>
@@ -241,29 +214,33 @@ const activeDialog = ref(null);
 const activeMedia = ref(null);
 
 const statusInfo = ref({
-  did: '1181294988',
+  did: '',
   urlPort: 0,
   webPort: 0,
+  dataRoot: '',
   online: false,
   message: ''
 });
 
+// 初值一律为空/零：真实数值必须来自 NAS，未连上时前端显示"未上报"而不是假数据
 const storageData = ref({
-  usedBytes: 12314144768,
-  totalBytes: 8001583472640, // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
-  uid: '2912935973',
+  usedBytes: 0,
+  totalBytes: 0,
+  totalIsEstimated: false,
+  uid: '',
   poolType: '存储池 pool0 (双盘镜像)'
 });
 
 const systemHardwareInfo = ref({
+  estimated: true,
   model: 'Xiaomi Smart Storage',
-  cpu: { model: 'Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)', cores: 4, usagePercent: 18, temp: 43.5 },
-  memory: { totalBytes: 4294967296, usedBytes: 1803886264, usagePercent: 42.0 },
-  network: { linkSpeed: '2.5 Gbps', ip: '192.168.31.88' }
+  cpu: { model: 'Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)', cores: 4, usagePercent: null, temp: null },
+  memory: { totalBytes: 4294967296, usedBytes: null, usagePercent: null },
+  network: { linkSpeed: '2.5 Gbps', ip: null }
 });
 
 const monitorData = ref({
-  currentRTT: 12,
+  currentRTT: 0,
   history: [],
   tunnel: '本地隧道 / P2P 直连'
 });
@@ -326,16 +303,17 @@ async function loadAllData() {
       systemHardwareInfo.value = sysRes.data;
     }
 
-    // 3. 获取用户配额与真实存储容量
+    // 3. 获取用户配额与存储容量
     const usersRes = await apiGetWithCache('/api/users', 'cache_users');
-    if (usersRes) {
+    if (usersRes && usersRes.status !== 'error') {
       const ulist = usersRes.data?.users || usersRes.users || [];
       if (ulist.length > 0) {
         const u = ulist[0];
         storageData.value = {
-          usedBytes: parseInt(u.used_size || 12314144768, 10),
-          totalBytes: parseInt(u.total_size || 3840755982336, 10),
-          uid: String(u.uid || '2912935973'),
+          usedBytes: parseInt(u.used_size || 0, 10),
+          totalBytes: parseInt(u.total_size || 0, 10),
+          totalIsEstimated: !!u.total_size_is_estimated,
+          uid: String(u.uid || ''),
           poolType: u.pool_type || '存储池 pool0 (双盘镜像)'
         };
       }
@@ -381,7 +359,7 @@ function handleLaunchApp(app) {
         .filter(f => f.type === 'photo' || f.name.includes('.png') || f.name.includes('.jpg') || f.name.includes('.heic'))
         .map(f => ({
           name: f.name,
-          sub: `${f.parent || '/home/u2912935973/pool0/data/test'} · 照片`,
+          sub: `${f.parent || statusInfo.value.dataRoot || ''} · 照片`,
           detail: formatSize(f.size)
         }))
     };
@@ -391,12 +369,10 @@ function handleLaunchApp(app) {
     activeDialog.value = {
       title: '家庭成员共享与权限分配',
       icon: '👥',
-      desc: '已配置多空间完全隔离，保障个人私密相册不受侵扰',
-      items: [
-        { name: `主管理员账号 (UID: ${storageData.value.uid})`, sub: '双盘镜像阵列拥有者', detail: '超级管理员' },
-        { name: '家庭共享空间 (Family Shared)', sub: '向所有已绑定的米家家庭成员开放', detail: '全员可读写' },
-        { name: 'Dual-Backup 物理盘镜像保护', sub: '自动双写防护，损坏一盘数据不丢', detail: '健康' }
-      ]
+      desc: '官方 LuCI 仅开放 user_list 只读接口，未提供成员增删与权限修改能力。',
+      items: storageData.value.uid
+        ? [{ name: `当前登录账号 (UID: ${storageData.value.uid})`, sub: '来自 NAS user_list 接口', detail: '管理员' }]
+        : []
     };
   } else if (app.name === '系统设置') {
     activeDialog.value = {
@@ -414,13 +390,10 @@ function handleLaunchApp(app) {
     };
   } else if (app.name === '保险箱') {
     activeDialog.value = {
-      title: '硬件芯片级加密保险箱',
+      title: '加密保险箱',
       icon: '🔐',
-      desc: '采用 NAS 板载安全芯片生成的独立 AES-256 根密钥',
-      items: [
-        { name: '个人机密证书包 (minasCert.zip)', sub: '安全等级最高', detail: '已加密' },
-        { name: '财务备份与个人证件.enc', sub: '单向独立密钥', detail: '已锁定' }
-      ]
+      desc: '官方 LuCI 未开放保险箱索引接口，网页版无法列出其中的加密文件。',
+      items: []
     };
   } else {
     activeDialog.value = {
@@ -428,9 +401,8 @@ function handleLaunchApp(app) {
       icon: '📦',
       desc: app.desc || '米家智能存储已启用该扩展组件',
       items: [
-        { name: '运行状态', detail: app.installed ? '运行中 (后台守护)' : '未安装' },
-        { name: '分类模式', detail: app.category || '扩展应用' },
-        { name: '资源占用', detail: '< 15MB 内存' }
+        { name: '运行状态', detail: app.installed ? '已安装' : '未安装' },
+        { name: '分类模式', detail: app.category || '扩展应用' }
       ]
     };
   }
@@ -661,6 +633,17 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--mi-text-sub);
   margin-bottom: 16px;
+}
+
+/* 功能在官方 API 中不存在时的说明块，避免用户误以为页面坏了 */
+.unavailable-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--mi-radius-md);
+  padding: 12px 16px;
 }
 
 .modal-list-box {

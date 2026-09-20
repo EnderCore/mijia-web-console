@@ -3,11 +3,16 @@
     <div class="card-header">
       <div class="header-left">
         <span class="icon">⚡</span>
-        <h3>系统硬件状态与网络链路</h3>
+        <h3>设备规格与网络链路</h3>
       </div>
       <span class="ping-badge" :class="pingColorClass">
         往返延迟 {{ currentRtt }} ms
       </span>
+    </div>
+
+    <!-- NAS 未开放硬件监控接口，CPU/内存读数无法实时获取，须如实标注 -->
+    <div v-if="systemInfo.estimated" class="estim-note">
+      官方 LuCI 未开放 CPU / 内存 / 温度查询接口，下方硬件读数按机型规格推算，非实时监控值。
     </div>
 
     <div class="monitor-body">
@@ -16,30 +21,28 @@
         <div class="hw-item">
           <div class="hw-top">
             <span class="hw-name">CPU 使用率</span>
-            <span class="hw-val" :class="systemInfo.cpu.usagePercent > 70 ? 'text-red' : 'text-orange'">
-              {{ systemInfo.cpu.usagePercent }}%
-            </span>
+            <span class="hw-val text-muted">{{ fmtPct(systemInfo.cpu.usagePercent) }}</span>
           </div>
           <div class="hw-bar">
-            <div class="hw-bar-fill orange" :style="{ width: systemInfo.cpu.usagePercent + '%' }"></div>
+            <div class="hw-bar-fill orange" :style="{ width: (systemInfo.cpu.usagePercent || 0) + '%' }"></div>
           </div>
           <div class="hw-sub">
             <span>{{ systemInfo.cpu.cores }} 核心 Cortex-A55</span>
-            <span>{{ systemInfo.cpu.temp }} °C</span>
+            <span>{{ systemInfo.cpu.temp == null ? '温度未上报' : systemInfo.cpu.temp + ' °C' }}</span>
           </div>
         </div>
 
         <div class="hw-item">
           <div class="hw-top">
             <span class="hw-name">RAM 内存</span>
-            <span class="hw-val text-blue">{{ systemInfo.memory.usagePercent }}%</span>
+            <span class="hw-val text-blue">{{ fmtPct(systemInfo.memory.usagePercent) }}</span>
           </div>
           <div class="hw-bar">
-            <div class="hw-bar-fill blue" :style="{ width: systemInfo.memory.usagePercent + '%' }"></div>
+            <div class="hw-bar-fill blue" :style="{ width: (systemInfo.memory.usagePercent || 0) + '%' }"></div>
           </div>
           <div class="hw-sub">
-            <span>已用 {{ formatMB(systemInfo.memory.usedBytes) }} MB</span>
-            <span>总计 {{ formatMB(systemInfo.memory.totalBytes) }} MB</span>
+            <span>已用 {{ fmtMB(systemInfo.memory.usedBytes) }}</span>
+            <span>总计 {{ fmtMB(systemInfo.memory.totalBytes) }} MB</span>
           </div>
         </div>
       </div>
@@ -52,7 +55,11 @@
         </div>
         <div class="info-row">
           <span class="label">网卡与链接</span>
-          <span class="val">{{ systemInfo.network.linkSpeed }} 全双工 ({{ systemInfo.network.ip }})</span>
+          <span class="val">
+            {{ systemInfo.network.linkSpeed }} 全双工
+            <template v-if="systemInfo.network.ip"> ({{ systemInfo.network.ip }})</template>
+            <template v-else> · IP 未上报</template>
+          </span>
         </div>
         <div class="info-row">
           <span class="label">穿透网关模式</span>
@@ -104,17 +111,23 @@ const props = defineProps({
   systemInfo: {
     type: Object,
     default: () => ({
+      estimated: true,
       model: 'Xiaomi Smart Storage',
-      cpu: { model: 'Realtek RTD1619B Quad-Core', cores: 4, usagePercent: 18, temp: 43.5 },
-      memory: { totalBytes: 4294967296, usedBytes: 1803886264, usagePercent: 42.0 },
-      network: { linkSpeed: '2.5 Gbps', ip: '192.168.31.88' }
+      cpu: { model: 'Realtek RTD1619B Quad-Core', cores: 4, usagePercent: null, temp: null },
+      memory: { totalBytes: 4294967296, usedBytes: null, usagePercent: null },
+      network: { linkSpeed: '2.5 Gbps', ip: null }
     })
   }
 });
 
-function formatMB(bytes) {
-  if (!bytes) return '0';
-  return Math.round(bytes / (1024 * 1024));
+// 未上报的指标显示为"未上报"，不要假装是 0% 或某个具体读数
+function fmtPct(v) {
+  return v == null ? '未上报' : v + '%';
+}
+
+function fmtMB(bytes) {
+  if (bytes == null) return '未上报';
+  return Math.round(bytes / (1024 * 1024)) + ' MB';
 }
 
 const pingColorClass = computed(() => {
@@ -367,5 +380,21 @@ const lastPoint = computed(() => {
 
 .font-mono {
   font-family: monospace;
+}
+
+.estim-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--mi-radius-md);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.text-muted {
+  color: var(--mi-text-sub);
+  font-weight: 600;
 }
 </style>

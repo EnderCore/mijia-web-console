@@ -29,14 +29,25 @@ const { execSync } = require("child_process");
 
 const SERVER_PORT = 8090;
 
+// ============ 硬件规格（按你的实际设备修改）============
+// NAS 的 LuCI API 不提供内存/磁盘总量查询接口，仅上报已用容量，
+// 因此总容量与内存规格需在此声明为静态规格值。运行时的占用率/温度无从获取，
+// 一律返回 null，前端显示"未上报"。
+const HARDWARE = {
+  // 内存总容量（字节）。小米智能存储双盘位有 2GB / 4GB 两种版本。
+  totalMemoryBytes: parseInt(process.env.NAS_TOTAL_MEMORY || "", 10) || 4 * 1024 * 1024 * 1024,
+  // 存储池格式化后可用总容量（字节）。8TB 双盘镜像约 7.28 TiB。
+  totalPoolBytes: parseInt(process.env.NAS_TOTAL_POOL || "", 10) || 8001583472640,
+};
+
 // 1. 初始化本地磁盘高速缓存目录 (用于在弱网/离线环境下秒级命中缩略图和图标)
 const CACHE_DIR = path.join(__dirname, "cache");
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-// 2. 自动定位证书与 DID
-let DID = "1181294988";
+// 2. 自动定位证书与 DID（DID 从证书文件名解析，无需硬编码）
+let DID = "";
 let cert = null;
 let key = null;
 let ca = null;
@@ -57,11 +68,12 @@ if (fs.existsSync(certDir)) {
   if (caFile) ca = fs.readFileSync(path.join(certDir, caFile));
 }
 
-const needle = crypto.createHash("sha1").update(DID).digest("hex");
+// 用于匹配 NAS 服务器证书 CN 的指纹（DID 为空时无法匹配，探测会给出明确报错）
+const needle = DID ? crypto.createHash("sha1").update(DID).digest("hex") : "";
 
 // 2.1 自动提取官方客户端 WebDAV 动态凭据
 // 官方 Electron 渲染进程把 webDavInfo 存在 Local Storage 的 leveldb 里，形如：
-// {"username":"u2912935973","port":62185,"alias_root":"/home/u2912935973",
+// {"username":"u<UID>","port":62185,"alias_root":"/home/u<UID>",
 //  "uri":"https://127.0.0.1:62185","password":"...","port_2":62188}
 // 用户名/密码每次会话轮换，因此必须运行时读取，不能硬编码。
 function readWebdavCredentials() {
@@ -95,49 +107,43 @@ let lastTokenTime = 0;
 let rttHistory = [];
 let webdavCreds = null;
 
-// 4. 高保真系统模拟数据 (当 NAS 离线或特定底层系统接口受限时使用，数据完全吻合真实硬件)
-// 小米智能存储硬件规格：Realtek RTD1619B 四核 ARM Cortex-A55 @ 1.7GHz，4GB 内存
+// 硬件规格 (NAS 未提供硬件监控 API，以下仅为按机型规格声明的静态规格)
+// 已实测确认：官方 LuCI 未开放 CPU/内存/温度/磁盘查询接口，
+// 且 /cgi-bin/luci/home/get_profile 恒定返回 1003 参数错误。
+// 因此：只有 totalMemoryBytes 是用户在 HARDWARE 里声明的规格，
+// 其余运行时指标（CPU 占用、温度、内存占用）一律返回 null，
+// 前端须显示"未上报"，不得用估算值冒充实时读数。
 function getSystemHardwareMetrics() {
-  const cpuModel = "Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)";
-  const cpuCores = 4;
-
-  // 计算动态 CPU 波动率
-  const randomCpu = Math.floor(Math.random() * 15) + 12; // 12% - 27% 正常负载
-  const totalMem = 4 * 1024 * 1024 * 1024; // 4GB 标配 NAS 内存
-  const usedMem = Math.floor(totalMem * 0.42) + Math.floor(Math.random() * 50 * 1024 * 1024); // 约 42% 使用率
-
   return {
+    estimated: true,
     model: "Xiaomi Smart Storage (Dual-Bay)",
-    systemName: "MiNAS OS 1.4.28 (Linux 5.10.160)",
     cpu: {
-      model: cpuModel,
-      cores: cpuCores,
-      usagePercent: randomCpu,
-      temp: 43.5 + +(Math.random() * 1.5).toFixed(1)
+      model: "Realtek RTD1619B (Quad-Core ARM Cortex-A55 @ 1.70GHz)",
+      cores: 4,
+      usagePercent: null,
+      temp: null
     },
     memory: {
-      totalBytes: totalMem,
-      usedBytes: usedMem,
-      freeBytes: totalMem - usedMem,
-      usagePercent: Number(((usedMem / totalMem) * 100).toFixed(1))
+      totalBytes: HARDWARE.totalMemoryBytes,
+      usedBytes: null,
+      freeBytes: null,
+      usagePercent: null
     },
-    uptimeSeconds: 86400 * 3 + 3600 * 5 + 420,
     network: {
       linkSpeed: "2.5 Gbps",
-      ip: "192.168.31.88",
-      mac: "64:90:C1:2B:7E:9A"
+      ip: null,
+      mac: null
     },
     storagePool: {
       name: "pool0",
       type: "Dual-Backup (双盘镜像防护)",
-      healthy: true,
-      usedBytes: 12314144768, // 11.47 GB
-      totalBytes: 8001583472640 // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
+      usedBytes: null,
+      totalBytes: HARDWARE.totalPoolBytes
     }
   };
 }
 
-// 丰富真实的小程序与扩展应用列表
+// 小程序与应用列表兜底数据（NAS 未返回 get_app_list 时展示）
 const FULL_APPS = [
   { id: "photo", name: "相册", category: "core", desc: "AI 智能相册，时光轴与面孔识别", installed: true, icon: "", status: "running" },
   { id: "file", name: "文件", category: "core", desc: "NAS 全局文件管理与外部存储挂载", installed: true, icon: "", status: "running" },
@@ -172,73 +178,6 @@ function generateSvgThumbnail(title, color1, color2, icon) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-const FULL_MEDIA_FILES = [
-  {
-    id: "f-1",
-    name: "家庭旅行记录_海边日落.jpg",
-    type: "photo",
-    size: 5824912,
-    modified_time: Date.now() - 3600000 * 2,
-    thumbnail: generateSvgThumbnail("海边日落 · 4032x3024", "#3b82f6", "#1d4ed8", "🌅"),
-    previewUrl: generateSvgThumbnail("海边日落 · 4032x3024", "#3b82f6", "#1d4ed8", "🌅"),
-    path: "/home/u2912935973/pool0/我的照片/2026-09/海边日落.jpg",
-    dim: "4032 × 3024"
-  },
-  {
-    id: "f-2",
-    name: "中秋露营合影_4K_HDR.mp4",
-    type: "video",
-    size: 1428576000,
-    duration: "04:36",
-    modified_time: Date.now() - 86400000,
-    thumbnail: generateSvgThumbnail("中秋露营合影 · 4K 60fps", "#f97316", "#c2410c", "🎬"),
-    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    path: "/home/u2912935973/pool0/我的照片/2026-09/中秋露营合影_4K_HDR.mp4",
-    dim: "3840 × 2160"
-  },
-  {
-    id: "f-3",
-    name: "SonyA7M4_样张RAW_原图.heic",
-    type: "photo",
-    size: 24823412,
-    modified_time: Date.now() - 86400000 * 3,
-    thumbnail: generateSvgThumbnail("Sony A7M4 样张 · 3300万像素", "#10b981", "#047857", "📸"),
-    previewUrl: generateSvgThumbnail("Sony A7M4 样张 · 3300万像素", "#10b981", "#047857", "📸"),
-    path: "/home/u2912935973/pool0/我的照片/2026-09/SonyA7M4_样张RAW.heic",
-    dim: "7008 × 4672"
-  },
-  {
-    id: "f-4",
-    name: "家庭影院_星际穿越_4K_REMUX.mkv",
-    type: "video",
-    size: 18450124900,
-    duration: "02:49:12",
-    modified_time: Date.now() - 86400000 * 5,
-    thumbnail: generateSvgThumbnail("星际穿越 · 4K REMUX 杜比视界", "#6366f1", "#4338ca", "🌌"),
-    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    path: "/home/u2912935973/pool0/影视/星际穿越.mkv",
-    dim: "3840 × 2160"
-  },
-  {
-    id: "f-5",
-    name: "2026家庭资产与重要合同汇总.pdf",
-    type: "doc",
-    size: 8924100,
-    modified_time: Date.now() - 86400000 * 7,
-    thumbnail: generateSvgThumbnail("家庭资产合同汇总 · PDF", "#ec4899", "#be185d", "📄"),
-    path: "/home/u2912935973/pool0/我的文档/2026资产合同.pdf"
-  },
-  {
-    id: "f-6",
-    name: "摄影原片备份归档目录",
-    type: "doc",
-    size: 0,
-    modified_time: Date.now() - 86400000 * 10,
-    xattr: { directory: true },
-    thumbnail: generateSvgThumbnail("摄影原片备份归档 · 文件夹", "#64748b", "#334155", "📁"),
-    path: "/home/u2912935973/pool0/我的照片/摄影原片备份归档"
-  }
-];
 
 // 静默探测活跃端口 (只读 TLS 握手)
 async function detectActivePorts() {
@@ -419,6 +358,14 @@ function callWebdav(method, apiPath, headers = {}, body = null, timeoutMs = 6000
   });
 }
 
+// 从 WebDAV 凭据推导用户数据根目录 (形如 /home/u<UID>/pool0/data)。
+// 前端不再硬编码 UID，换设备或换账号都能正确打开根目录。
+function getDataRoot() {
+  const creds = ensureWebdavCreds();
+  if (!creds || !creds.alias_root) return "";
+  return creds.alias_root.replace(/\/$/, "") + "/pool0/data";
+}
+
 // 向 NAS 发送 POST JSON 请求
 async function callNasAPI(path, body = {}) {
   await ensureReady();
@@ -487,7 +434,9 @@ const server = http.createServer(async (req, res) => {
         online: true,
         did: DID,
         urlPort: activeUrlPort,
+        webdavPort: activeWebdavPort,
         webPort: activeWebPort,
+        dataRoot: getDataRoot(),
         tokenReady: !!accessToken,
         lastRTT: rttHistory.length > 0 ? rttHistory[rttHistory.length - 1].rtt : 12
       }));
@@ -498,7 +447,9 @@ const server = http.createServer(async (req, res) => {
         online: false,
         message: e.message,
         did: DID,
+        dataRoot: getDataRoot(),
         urlPort: 0,
+        webdavPort: 0,
         webPort: 0
       }));
     }
@@ -550,45 +501,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. /api/users 真实总容量与用户配额
+  // 4. /api/users 用户配额与容量
   if (pathname === "/api/users") {
     try {
       const resp = await callNasAPI("/cgi-bin/luci/usermanager/user_list", {});
-      const rawList = resp.data?.data?.list || resp.data?.list || resp.data?.users || [];
-      const ulist = rawList.length > 0 ? rawList : [
-        {
-          uid: "2912935973",
-          permission: "admin",
-          used_size: 12327571456,
-          total_size: 8001583472640
-        }
-      ];
+      const ulist = resp.data?.data?.list || resp.data?.list || resp.data?.users || [];
 
-      // 修正总容量：双盘位 8TB 格式化后有效容量约为 8001583472640 字节 (7.28 TiB)
+      if (!ulist.length) {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: "NAS 未返回用户列表", data: { users: [] } }));
+        return;
+      }
+
+      // NAS 通常把 total_size 上报为 0（配额不做限制），此时回退到 HARDWARE.totalPoolBytes
+      // 并按"估算"标注，前端会显示为估算值而不是用户配额。
       const u = ulist[0];
-      const fixedTotal = u.total_size && parseInt(u.total_size, 10) > 1024 * 1024 * 1024 * 1024
-        ? parseInt(u.total_size, 10)
-        : 8001583472640;
-      u.total_size = fixedTotal;
+      const reported = parseInt(u.total_size || 0, 10);
+      u.total_size = reported > 0 ? reported : HARDWARE.totalPoolBytes;
+      u.total_size_is_estimated = !(reported > 0);
       u.pool_type = "Dual-Backup (双盘镜像防护)";
 
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ data: { users: ulist, list: ulist } }));
+      res.end(JSON.stringify({ status: "ok", data: { users: ulist, list: ulist } }));
     } catch (e) {
+      // 不返回伪造数据，如实报告失败原因
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({
-        data: {
-          users: [
-            {
-              uid: "2912935973",
-              role: "admin",
-              used_size: 12327571456, // 11.48 GB
-              total_size: 8001583472640, // 7.28 TiB
-              pool_type: "Dual-Backup (双盘镜像防护)"
-            }
-          ]
-        }
-      }));
+      res.end(JSON.stringify({ status: "error", message: e.message, data: { users: [] } }));
     }
     return;
   }
@@ -1047,8 +985,8 @@ const server = http.createServer(async (req, res) => {
       const taskId = parsedUrl.searchParams.get("taskId") || "";
 
       if (action === "create") {
-        // 创建转码任务
-        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_create_task", {});
+        // 创建转码任务（须带 file_path，否则 NAS 不知道要转哪个文件）
+        const resp = await callNasAPI("/cgi-bin/luci/player/transcode_create_task", { file_path: filePath });
         const tId = resp.data?.data?.task_id || "";
         if (tId && filePath) {
           // 启动转码调度
@@ -1102,17 +1040,14 @@ const server = http.createServer(async (req, res) => {
         tunnel: "P2P 隧道 (127.0.0.1:" + activeUrlPort + ")"
       }));
     } catch (e) {
-      const simulatedRtt = Math.floor(Math.random() * 6) + 11;
-      const point = { time: new Date().toLocaleTimeString(), rtt: simulatedRtt, timestamp: Date.now() };
-      rttHistory.push(point);
-      if (rttHistory.length > 20) rttHistory.shift();
-
+      // 测量失败就是失败：不生成随机 RTT 冒充真实采样（波形图上的假数据最难被发现）
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({
-        status: "demo",
-        currentRTT: simulatedRtt,
+        status: "error",
+        message: e.message,
+        currentRTT: null,
         history: rttHistory,
-        tunnel: "本地直连 / 演示链路"
+        tunnel: ""
       }));
     }
     return;

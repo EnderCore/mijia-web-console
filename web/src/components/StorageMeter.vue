@@ -15,11 +15,17 @@
           <span class="num">{{ formatGB(usedBytes) }}</span>
           <span class="unit">GB</span>
         </div>
-        <p class="sub-desc">已用存储容量 · 格式化总可用约 {{ totalDisplay }}</p>
+        <p class="sub-desc">
+          <template v-if="totalBytes > 0">
+            已用存储容量 · 格式化总可用约 {{ totalDisplay }}
+            <span v-if="totalIsEstimated" class="estim-tag">总容量按机型规格推算，NAS 未上报</span>
+          </template>
+          <template v-else>已用存储容量 · 总容量未上报</template>
+        </p>
       </div>
 
       <!-- 米家经典进度条 -->
-      <div class="progress-container">
+      <div class="progress-container" v-if="totalBytes > 0">
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: percent + '%' }"></div>
         </div>
@@ -32,20 +38,20 @@
       <!-- 盘位与阵列配置详情 -->
       <div class="details-grid">
         <div class="detail-item">
-          <span class="d-label">盘位 1 (主存储)</span>
-          <span class="d-val text-green">4 TB 希捷酷狼 · 正常 (38°C)</span>
-        </div>
-        <div class="detail-item">
-          <span class="d-label">盘位 2 (镜像保护)</span>
-          <span class="d-val text-green">4 TB 希捷酷狼 · 正常 (39°C)</span>
+          <span class="d-label">存储池</span>
+          <span class="d-val font-mono">pool0</span>
         </div>
         <div class="detail-item">
           <span class="d-label">阵列保护等级</span>
-          <span class="d-val text-green">Dual-Backup (100% 镜像冗余)</span>
+          <span class="d-val text-green">Dual-Backup (双盘镜像冗余)</span>
         </div>
         <div class="detail-item">
           <span class="d-label">文件系统</span>
           <span class="d-val font-mono">Btrfs (支持秒级快照/防腐)</span>
+        </div>
+        <div class="detail-item">
+          <span class="d-label">盘位健康 / 温度</span>
+          <span class="d-val text-muted">未上报 (LuCI 无对应接口)</span>
         </div>
       </div>
     </div>
@@ -56,9 +62,11 @@
 import { computed } from 'vue';
 
 const props = defineProps({
-  usedBytes: { type: Number, default: 12314144768 },
-  totalBytes: { type: Number, default: 8001583472640 }, // 7.28 TiB ≈ 8TB 标称 (双盘位 8TB 格式化后可用)
-  uid: { type: String, default: '2912935973' },
+  usedBytes: { type: Number, default: 0 },
+  totalBytes: { type: Number, default: 0 },
+  // 总容量是否为按机型规格推算（NAS 未上报配额时）
+  totalIsEstimated: { type: Boolean, default: false },
+  uid: { type: String, default: '' },
   poolType: { type: String, default: '存储池 pool0 (双盘镜像)' }
 });
 
@@ -68,9 +76,9 @@ function formatGB(bytes) {
 }
 
 const percent = computed(() => {
-  if (!props.totalBytes) return '0.3';
+  if (!props.totalBytes) return 0;
   const p = (props.usedBytes / props.totalBytes) * 100;
-  return p < 0.1 ? '0.3' : p.toFixed(1);
+  return p < 0.1 ? '0.1' : p.toFixed(1);
 });
 
 const totalDisplay = computed(() => {
@@ -215,6 +223,21 @@ const freeDisplay = computed(() => {
 
 .text-green {
   color: #10b981;
+}
+
+.text-muted {
+  color: var(--mi-text-sub);
+}
+
+.estim-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 1px 6px;
 }
 
 .font-mono {

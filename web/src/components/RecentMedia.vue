@@ -3,10 +3,10 @@
     <div class="card-header">
       <div class="header-left">
         <span class="icon">📸</span>
-        <h3>最近照片与媒体流 (已缓存)</h3>
+        <h3>最近照片与媒体流</h3>
       </div>
       <div class="header-right">
-        <span class="file-count">已同步 {{ filteredFiles.length }} 项</span>
+        <span class="file-count">共 {{ filteredFiles.length }} 项</span>
       </div>
     </div>
 
@@ -47,7 +47,7 @@
           <!-- 视频专用标识与时长播放按钮 -->
           <div v-if="file.type === 'video'" class="video-overlay">
             <span class="play-icon">▶</span>
-            <span class="duration">{{ file.duration || '03:15' }}</span>
+            <span v-if="file.duration" class="duration">{{ file.duration }}</span>
           </div>
 
           <span v-if="file.dim" class="res-tag">{{ file.dim }}</span>

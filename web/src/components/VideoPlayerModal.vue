@@ -10,7 +10,7 @@
         </div>
 
         <div class="header-controls">
-          <!-- 分辨率切换器下拉菜单 -->
+          <!-- 分辨率切换器：档位来自 NAS 转码接口，取不到时只保留原画 -->
           <div class="resolution-dropdown">
             <button class="res-btn" @click="showResMenu = !showResMenu">
               <span class="current-res">{{ currentQuality.label }}</span>
@@ -58,7 +58,7 @@
           <span>路径: <code class="path-code">{{ video?.path || video?.name }}</code></span>
         </div>
         <div class="footer-right">
-          <span>支持键盘空格暂停 / 方向键快进 / F键全屏</span>
+          <span v-if="resolutionError" class="res-warn">{{ resolutionError }}</span>
         </div>
       </div>
     </div>
@@ -81,14 +81,14 @@ const videoEl = ref(null);
 let player = null;
 const showResMenu = ref(false);
 const transcodingNotice = ref('');
+const resolutionError = ref('');
 let taskId = null;
 
-// 分辨率档位定义
+// 分辨率档位。原画始终可用（直接走 /api/stream 的 206 流），
+// 其余档位只有 NAS 的 transcode_get_resolution 真的返回了对应清晰度才加进来——
+// 否则切档只是换个标签、播放同一个 URL，属于欺骗用户。
 const qualityOptions = ref([
-  { key: 'origin', label: '原画 (Direct Stream)', badge: '4K/1080P', sourceType: 'NAS 直连 206 流', scale: 1 },
-  { key: '1080p', label: '1080P 超清', badge: '硬件加速', sourceType: '实时智能流', scale: 0.75 },
-  { key: '720p', label: '720P 高清', badge: '省流平滑', sourceType: '动态平衡流', scale: 0.5 },
-  { key: '480p', label: '480P 标清', badge: '极速低延迟', sourceType: '弱网流畅流', scale: 0.35 }
+  { key: 'origin', label: '原画 (直连)', badge: '原始码率', sourceType: 'NAS 直连 206 流', url: '' }
 ]);
 
 const currentQuality = ref(qualityOptions.value[0]);
@@ -102,6 +102,65 @@ function formatSize(bytes) {
   return (b / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
 }
 
+// 直接播放原画的流地址
+function originStreamUrl() {
+  return `/api/stream?path=${encodeURIComponent(props.video?.path || '')}`;
+}
+
+// 档位对应的播放地址：HLS 档位用 NAS 给的 m3u8，原画用网关的 206 流
+function streamUrlFor(q) {
+  return q.url || originStreamUrl();
+}
+
+// 向 NAS 申请清转码任务并拉取真实可用清晰度
+async function loadResolutions() {
+  const p = props.video?.path;
+  if (!p) return;
+
+  try {
+    const res = await fetch(`/api/video/task?action=create&path=${encodeURIComponent(p)}`);
+    const data = await res.json();
+    if (data.status !== 'ok' || !data.taskId) {
+      resolutionError.value = 'NAS 未提供转码任务，仅可播放原画';
+      return;
+    }
+    taskId = data.taskId;
+
+    const rres = await fetch(`/api/video/task?action=resolutions&taskId=${encodeURIComponent(taskId)}&path=${encodeURIComponent(p)}`);
+    const rdata = await rres.json();
+    const list = rdata?.data?.resolutions || rdata?.data?.list || [];
+
+    if (!Array.isArray(list) || list.length === 0) {
+      resolutionError.value = 'NAS 未返回可选清晰度，仅可播放原画';
+      return;
+    }
+
+    // NAS 返回的每一项映射成一个档位；url 必须是真实可播地址
+    const extra = list
+      .map((r) => {
+        const url = r.url || r.m3u8 || r.play_url || '';
+        if (!url) return null;
+        const h = parseInt(r.height || r.resolution || 0, 10);
+        return {
+          key: `r${h || r.name || Math.random().toString(36).slice(2, 7)}`,
+          label: r.name || (h ? `${h}P` : '转码流'),
+          badge: 'NAS 转码',
+          sourceType: r.codec ? `转码流 (${r.codec})` : 'NAS 转码流',
+          url
+        };
+      })
+      .filter(Boolean);
+
+    if (extra.length === 0) {
+      resolutionError.value = 'NAS 未返回可播放的转码地址，仅可播放原画';
+      return;
+    }
+    qualityOptions.value = [qualityOptions.value[0], ...extra];
+  } catch (e) {
+    resolutionError.value = '转码接口不可用，仅可播放原画';
+  }
+}
+
 // 切换分辨率
 async function selectQuality(q) {
   currentQuality.value = q;
@@ -112,14 +171,14 @@ async function selectQuality(q) {
   const currentTime = player.currentTime();
   const isPaused = player.paused();
 
-  transcodingNotice.value = `正在切换清晰度至 [${q.label}]...`;
+  transcodingNotice.value = `已切换至 [${q.label}]`;
   setTimeout(() => { transcodingNotice.value = ''; }, 2500);
 
-  // 获取真实流地址并支持断点续播
-  const streamUrl = `/api/stream?path=${encodeURIComponent(props.video?.path || '')}`;
+  // 换源并保留播放进度
+  const isHls = /\.m3u8(\?|$)/i.test(q.url || '');
   player.src({
-    src: streamUrl,
-    type: 'video/mp4'
+    src: streamUrlFor(q),
+    type: isHls ? 'application/x-mpegURL' : 'video/mp4'
   });
 
   player.ready(() => {
@@ -135,29 +194,23 @@ async function initPlayer() {
   await nextTick();
   if (!videoEl.value) return;
 
-  const streamUrl = `/api/stream?path=${encodeURIComponent(props.video?.path || '')}`;
+  resolutionError.value = '';
+  qualityOptions.value = [qualityOptions.value[0]];
+  currentQuality.value = qualityOptions.value[0];
 
+  // 原画直连可立即开播，转码档位在后台异步补齐
   player = videojs(videoEl.value, {
     controls: true,
     autoplay: true,
     fluid: true,
     playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
     sources: [{
-      src: streamUrl,
+      src: originStreamUrl(),
       type: 'video/mp4'
     }]
   });
 
-  // 向 NAS 注册转码任务
-  if (props.video?.path) {
-    try {
-      const res = await fetch(`/api/video/task?action=create&path=${encodeURIComponent(props.video.path)}`);
-      const data = await res.json();
-      if (data.status === 'ok' && data.taskId) {
-        taskId = data.taskId;
-      }
-    } catch (_) {}
-  }
+  await loadResolutions();
 }
 
 function handleClose() {
@@ -435,6 +488,10 @@ onBeforeUnmount(() => {
 
 .dot {
   opacity: 0.4;
+}
+
+.res-warn {
+  color: #fbbf24;
 }
 
 @keyframes fadeIn {
