@@ -700,18 +700,41 @@ const pathSegments = computed(() => {
   });
 });
 
+// 根目录真实文件夹缓存
+const rootFolderFiles = ref([]);
+const isRootLoading = ref(false);
+
+// 真正拉取并缓存物理根目录内容 (list_directory)
+async function fetchRootFiles() {
+  if (!ROOT_PATH.value) return;
+  isRootLoading.value = true;
+  try {
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(cleanPath(ROOT_PATH.value))}`);
+    const data = await res.json();
+    if (data.status === 'ok' && data.data?.files) {
+      rootFolderFiles.value = data.data.files;
+    }
+  } catch (e) {
+    console.error('拉取真实根目录失败:', e);
+  } finally {
+    isRootLoading.value = false;
+  }
+}
+
 // 加载指定目录下的子文件
 async function loadFolder(targetPath) {
+  const normPath = cleanPath(targetPath);
   loadingFolder.value = true;
   try {
-    const res = await fetch(`/api/files?parent=${encodeURIComponent(targetPath)}`);
+    const res = await fetch(`/api/files?parent=${encodeURIComponent(normPath)}`);
     const data = await res.json();
     if (data.status === 'ok' && data.data?.files) {
       currentFolderFiles.value = data.data.files;
-      currentPath.value = targetPath;
+      currentPath.value = normPath;
     }
   } catch (e) {
     console.error('加载子文件夹失败:', e);
+    currentFolderFiles.value = [];
   } finally {
     loadingFolder.value = false;
   }
@@ -719,19 +742,23 @@ async function loadFolder(targetPath) {
 
 // 导航到指定路径并联动多级分栏与左侧目录树
 function navigateTo(targetPath) {
-  if (targetPath === ROOT_PATH.value) {
-    currentPath.value = ROOT_PATH.value;
-    pathStack.value = [ROOT_PATH.value];
+  const normTarget = cleanPath(targetPath);
+  const normRoot = cleanPath(ROOT_PATH.value);
+
+  if (normTarget === normRoot || !normTarget) {
+    currentPath.value = normRoot;
+    pathStack.value = [normRoot];
     currentFolderFiles.value = [];
     selectedTreePath.value = '';
-    syncMillerColumns(ROOT_PATH.value);
+    fetchRootFiles();
+    syncMillerColumns(normRoot);
     return;
   }
-  pathStack.value.push(targetPath);
-  selectedTreePath.value = targetPath;
-  loadFolder(targetPath);
-  syncMillerColumns(targetPath);
-  autoExpandTreeToPath(targetPath);
+  pathStack.value.push(normTarget);
+  selectedTreePath.value = normTarget;
+  loadFolder(normTarget);
+  syncMillerColumns(normTarget);
+  autoExpandTreeToPath(normTarget);
 }
 
 // 返回上一级
@@ -882,13 +909,14 @@ async function deleteFile(file) {
 // 监听弹窗显示，恢复根目录并初始化目录树与多级分栏（只在初次或根路径变化时初始化一次，避免每次重拉）
 watch(() => props.visible, (val) => {
   if (val) {
-    currentPath.value = ROOT_PATH.value;
-    pathStack.value = [ROOT_PATH.value];
+    const root = cleanPath(ROOT_PATH.value);
+    currentPath.value = root;
+    pathStack.value = [root];
     currentFolderFiles.value = [];
     selectedTreePath.value = '';
-    syncMillerColumns(ROOT_PATH.value);
-    // 关键优化：目录树只拉一次，绝不重复刷新！
-    if (folderTree.value.length === 0 && ROOT_PATH.value) {
+    fetchRootFiles();
+    syncMillerColumns(root);
+    if (folderTree.value.length === 0 && root) {
       refreshTree();
     }
   }
@@ -897,12 +925,13 @@ watch(() => props.visible, (val) => {
 // 根路径来自网关，异步到达时初始化一次目录树
 watch(() => props.rootPath, (val) => {
   if (val) {
-    if (currentPath.value === '' || currentPath.value === val) {
-      currentPath.value = val;
-      pathStack.value = [val];
-      syncMillerColumns(val);
+    const norm = cleanPath(val);
+    if (currentPath.value === '' || currentPath.value === norm) {
+      currentPath.value = norm;
+      pathStack.value = [norm];
+      fetchRootFiles();
+      syncMillerColumns(norm);
     }
-    // 只要树还没有被加载，就仅加载一次
     if (folderTree.value.length === 0) {
       refreshTree();
     }
@@ -910,11 +939,11 @@ watch(() => props.rootPath, (val) => {
 });
 
 const displayFiles = computed(() => {
-  // 彻底修复 Bug 1：如果进入了子目录（currentPath !== ROOT_PATH），
-  // 当前目录即使文件数为 0 也严格取子目录结果，绝不使用 props.files 冒充！
-  let list = (currentPath.value !== ROOT_PATH.value)
+  // 彻底修复：根目录展示真实的 rootFolderFiles，子目录展示真实的 currentFolderFiles
+  // 只有当 rootFolderFiles 还没加载完时才拿 props.files 临时兜底
+  let list = (cleanPath(currentPath.value) !== cleanPath(ROOT_PATH.value))
     ? currentFolderFiles.value
-    : props.files;
+    : (rootFolderFiles.value.length > 0 ? rootFolderFiles.value : props.files);
 
   if (activeCategory.value !== 'all') {
     list = list.filter(f => f.type === activeCategory.value);

@@ -356,8 +356,8 @@ function imageMimeFor(p) {
   return m.startsWith("image/") ? m : "image/jpeg";
 }
 
-function generateSvgThumbnail(title, color1, color2, icon) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
+function generateSvgThumbnailRaw(title, color1, color2, icon) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
     <defs>
       <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stop-color="${color1}"/>
@@ -370,6 +370,10 @@ function generateSvgThumbnail(title, color1, color2, icon) {
     <rect x="40" y="195" width="320" height="36" rx="18" fill="rgba(0,0,0,0.25)"/>
     <text x="200" y="219" font-size="14" font-weight="bold" font-family="sans-serif" text-anchor="middle" fill="#ffffff">${title}</text>
   </svg>`;
+}
+
+function generateSvgThumbnail(title, color1, color2, icon) {
+  const svg = generateSvgThumbnailRaw(title, color1, color2, icon);
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
@@ -1001,18 +1005,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const svgFallback = () => {
+    const sendSvgDirectly = () => {
       const isVideo = /\.(mp4|mkv|mov|avi|ts)$/i.test(filePath);
-      return generateSvgThumbnail(path.basename(filePath) || "Thumbnail",
+      const rawSvg = generateSvgThumbnailRaw(path.basename(filePath) || "Thumbnail",
         isVideo ? "#f97316" : "#3b82f6", isVideo ? "#c2410c" : "#1d4ed8",
         isVideo ? "🎬" : "🖼️");
+      res.writeHead(200, {
+        "Content-Type": "image/svg+xml; charset=utf-8",
+        "Cache-Control": "public, max-age=604800, immutable"
+      });
+      res.end(rawSvg);
     };
 
-    // 视频没有可用的缩略图来源（NAS 未开放截图接口），直接用矢量占位图，
-    // 不浪费一次原图下载。
+    // 视频没有可用的缩略图来源（NAS 未开放截图接口），直接返回高质量 SVG 响应，
+    // 绝不使用 302 重定向到 data: URI，防止 Chrome/Edge 触发 ERR_UNSAFE_REDIRECT！
     if (/\.(mp4|mkv|mov|avi|ts|flv|webm|rmvb)$/i.test(filePath)) {
-      res.writeHead(302, { Location: svgFallback() });
-      res.end();
+      sendSvgDirectly();
       return;
     }
 
@@ -1024,16 +1032,14 @@ const server = http.createServer(async (req, res) => {
       dav = await callWebdav("GET", filePath, {}, null, 30000);
     } catch (e) {
       releaseThumbnailSlot();
-      res.writeHead(302, { Location: svgFallback() });
-      res.end();
+      sendSvgDirectly();
       return;
     }
 
     if (dav.statusCode !== 200) {
       releaseThumbnailSlot();
       dav.resume();
-      res.writeHead(302, { Location: svgFallback() });
-      res.end();
+      sendSvgDirectly();
       return;
     }
 
