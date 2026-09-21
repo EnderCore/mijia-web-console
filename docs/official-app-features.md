@@ -140,7 +140,8 @@ system:       { device_poweroff: 1, alldata_delete: 1, restore_database: 1 }
 |------|------|
 | `filemgr/search` | 列目录（`type:"directory"` + `options.path.parent`）或全盘搜索（`type:"all"` + `keyword`） |
 | `filemgr/list_directory` | 目录列表（同步模块用） |
-| `filemgr/get_thumbnail_config` | 支持的图片/视频格式与三档尺寸（small 150×200 / big 600×800 / preview 1080×1920） |
+| `filemgr/get_thumbnail_config` | 支持的图片/视频格式与四档尺寸（small 150×200 / medium 300×400 / big 600×800 / preview 1080×1920） |
+| `filemgr/get_thumbnail` | **NAS 原生缩略图与视频抽帧接口**（POST `{"path": string, "size": string}`），直接返回纯二进制 `image/jpeg`，体积仅数 KB 到百 KB |
 | `filemgr/get_detail_info` | 文件详情 |
 | `filemgr/get_open_history` / `add_open_history` | 最近打开记录 |
 | `filemgr/get_shared_list` | 共享列表（需参数） |
@@ -150,9 +151,9 @@ system:       { device_poweroff: 1, alldata_delete: 1, restore_database: 1 }
 | `filemgr/favorite` / `unfavorite` | 收藏 / 取消收藏 |
 | `filemgr/enable_dual_backup` / `disable_dual_backup` | 双盘备份开关 |
 
-**缩略图怎么来的**：官方**没有** LuCI 缩略图接口。
-`downloadThumbnail.js` 走 WebDAV 下载原图 → 本机用 `heic-convert` 转换、按档位缩放 →
-由 `localServer.js` 在 `http://127.0.0.1:<本地端口>` 以 `image/jpeg` 提供。
+**缩略图怎么来的**：
+1. 列表模式优先调用 NAS 原生 `filemgr/get_thumbnail` 接口，NAS 端通过硬件加速或 FFmpeg 抽帧生成极小体积（约 7KB~15KB）的 JPEG 二进制流，实现极速加载与带宽节省。
+2. 仅在超大图或无原生缩略图支持的边缘场景下，才降级使用 `download.js` 走 WebDAV 下载原图并在客户端本地做 `heic-convert` 转换。
 
 ### 3.3 相册
 

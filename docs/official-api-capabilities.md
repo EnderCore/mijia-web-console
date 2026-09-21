@@ -37,18 +37,24 @@ LuCI 请求的基准 URL 由 `getBaseUrl()` 拼出：`https://127.0.0.1:<urlport
 > 注意 `type` 取 `"directory"` 时是「列出某目录下的内容」，取 `"all"` 时是「全盘关键词搜索」，
 > 两种语义不要混用。
 
-### 2.2 缩略图能力探测
+### 2.2 缩略图能力探测与原生生成服务
 
 | 接口 | 请求体 | 返回 |
 |------|--------|------|
-| `/cgi-bin/luci/filemgr/get_thumbnail_config` | `{}` | 支持的图片/视频扩展名与三档尺寸规格 |
+| `/cgi-bin/luci/filemgr/get_thumbnail_config` | `{}` | 支持的图片/视频扩展名与四档尺寸规格 |
+| `/cgi-bin/luci/filemgr/get_thumbnail` | `{"path": string, "size": "small"|"medium"|"big"|"preview"}` | **纯二进制 `image/jpeg` 压缩流** |
 
-尺寸档位：`small` (150×200)、`medium`、`big` (600×800)、`preview` (1080×1920)。
+尺寸档位规范：
+- `small`: 150×200（外接框等比缩放，图片约 15KB，视频关键帧约 7KB）
+- `medium`: 300×400（约 30KB）
+- `big`: 600×800（约 75KB）
+- `preview`: 1080×1920（高清大图预览约 160KB，视频画面抽帧约 95KB）
 
-> **重要**：官方客户端**没有**用 LuCI 接口去取缩略图。它的做法是
-> `downloadThumbnail.js` 通过 **WebDAV 下载原图**，再用 `heic-convert` 本地转换、按档位缩放，
-> 然后由 `localServer.js` 在 `http://127.0.0.1:<本地端口>` 上把结果以 `image/jpeg` 提供出去。
-> 也就是说「生成缩略图」这件事发生在客户端本机，不在 NAS 上。
+> **逆向核心修正**：
+> 1. NAS 侧 51831 mTLS 端口**原生开放了 `/cgi-bin/luci/filemgr/get_thumbnail` 硬件级压缩接口**！
+> 2. 图片类文件（JPG/PNG/HEIC/WEBP 等）由 NAS 直接就地压缩为几十 KB 的 JPEG 流。
+> 3. 视频类文件（MP4/MKV 等）由 NAS 内置的 FFmpeg（`Lavc`）进行关键帧截图并输出高清 JPEG，响应时间仅 200~300ms，相较原图下载节省带宽达 99%！
+> 4. 官方客户端在普通列表小图模式下，通过 `sendToDevice` RPC 接口调用该服务；而在超大图或无该接口的特殊格式时，才降级使用 `download.js` 走 WebDAV 提取原图。
 
 ### 2.3 用户与配额
 
