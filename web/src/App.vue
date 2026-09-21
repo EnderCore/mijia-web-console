@@ -124,7 +124,7 @@
           {{ mqttConnected ? '推送通道已连接' : '推送通道未连接' }}
         </span>
         <span class="dot">·</span>
-        <span>缩略图缓存: 本地磁盘 (server/cache)</span>
+        <span>缩略图缓存: 本地磁盘 (server/cache{{ serverCacheSizeStr ? ' · ' + serverCacheSizeStr : '' }})</span>
         <span class="dot">·</span>
         <span class="power-tag font-mono">Power by: Ender_Core</span>
       </div>
@@ -417,11 +417,14 @@ import {
   loadThemeConfig,
   applyTheme
 } from './utils/theme.js';
+import { getThumbEpoch, bumpThumbEpoch, getServerCacheStats, formatBytes } from './utils/cache.js';
 
 // 状态定义
 const deviceName = ref('小米智能存储 (NAS)');
 const showThemeModal = ref(false);
 const showCacheModal = ref(false);
+const serverCacheSizeStr = ref('');
+const thumbEpoch = ref(getThumbEpoch());
 
 // 隐私遮罩：masked 为共享单例，maskValue 内部依赖它，所以模板里调用 mask() 会自动重算
 const { masked: privacyMasked } = usePrivacy();
@@ -709,7 +712,7 @@ function openAlbumPhoto(p) {
     path: p.path,
     size: p.size,
     type: isVideo ? 'video' : 'photo',
-    previewUrl: `/api/thumbnail?path=${encodeURIComponent(p.path)}&size=preview`,
+    previewUrl: `/api/thumbnail?path=${encodeURIComponent(p.path)}&size=preview&v=${thumbEpoch.value}`,
     videoUrl: isVideo ? `/api/stream?path=${encodeURIComponent(p.path)}` : '',
   };
 }
@@ -840,6 +843,16 @@ async function loadAllData() {
 
     // 7. 系统只读杂项（能力开关/电源/SMB/升级状态），失败不阻塞主流程
     loadSysExtras();
+
+    // 8. 异步获取服务端磁盘缓存体积，展示在底部状态栏
+    getServerCacheStats().then(st => {
+      if (st && st.totalBytes !== undefined) {
+        serverCacheSizeStr.value = formatBytes(st.totalBytes);
+      }
+      if (st && st.epoch) {
+        thumbEpoch.value = st.epoch;
+      }
+    }).catch(() => {});
   } finally {
     refreshing.value = false;
   }
@@ -952,7 +965,7 @@ function openHistoryFile(h) {
   } else if (isPhoto) {
     activeMedia.value = {
       name: h.name, path: full, size: h.size, type: 'photo',
-      previewUrl: `/api/thumbnail?path=${encodeURIComponent(full)}&size=preview`,
+      previewUrl: `/api/thumbnail?path=${encodeURIComponent(full)}&size=preview&v=${thumbEpoch.value}`,
     };
   } else {
     handlePreviewDoc({ name: h.name, path: full, size: h.size, type: 'doc' });

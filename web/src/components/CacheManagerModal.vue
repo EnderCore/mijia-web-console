@@ -51,6 +51,60 @@
           </div>
         </div>
 
+        <!-- 服务端缩略图磁盘缓存 (server/cache) 与强缓存击穿管理 -->
+        <div class="section-card server-cache-card">
+          <div class="sc-header-row">
+            <div class="sc-title">
+              🖼️ 服务端缩略图磁盘缓存
+              <span class="sc-hint font-mono">server/cache</span>
+            </div>
+            <button
+              class="sc-refresh-btn"
+              :disabled="loadingServerCache"
+              @click="refreshServerCache"
+              title="重新读取服务端磁盘统计"
+            >
+              {{ loadingServerCache ? '扫描中…' : '🔄 刷新统计' }}
+            </button>
+          </div>
+
+          <div class="server-cache-stats-grid">
+            <div class="sc-stat-pill mi-surface">
+              <span class="label">缩略图与转码总占用</span>
+              <span class="val highlight">{{ formatBytes(serverStats.totalBytes) }}</span>
+            </div>
+            <div class="sc-stat-pill mi-surface">
+              <span class="label">缓存文件总量</span>
+              <span class="val">{{ serverStats.totalFiles }} 项</span>
+            </div>
+            <div class="sc-stat-pill mi-surface">
+              <span class="label">WebDAV 缩略图 (.img)</span>
+              <span class="val">{{ serverStats.byCategory?.thumbnails?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.thumbnails?.bytes) }})</span>
+            </div>
+            <div class="sc-stat-pill mi-surface">
+              <span class="label">HEIC 转码副本 (.jpg)</span>
+              <span class="val">{{ serverStats.byCategory?.transcoded?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.transcoded?.bytes) }})</span>
+            </div>
+          </div>
+
+          <div class="server-cache-actions">
+            <div class="server-action-desc">
+              <p>从 NAS 实时拉取的缩略图会在此落盘。若遇到缩略图不更新或显示异常，可清理此处并自动击穿浏览器 HTTP 磁盘缓存。</p>
+              <label class="danger-check">
+                <input type="checkbox" v-model="includeIcons" />
+                <span>同时清理原厂应用/系统图标缓存 (.png)</span>
+              </label>
+            </div>
+            <button
+              class="server-clear-btn"
+              :disabled="clearingServer || serverStats.totalFiles === 0"
+              @click="doClearServerCache"
+            >
+              {{ clearingServer ? '正在安全清理…' : '🗑️ 一键清空缩略图缓存' }}
+            </button>
+          </div>
+        </div>
+
         <!-- 明细列表 -->
         <div class="section-card">
           <div class="sc-title">
@@ -90,12 +144,18 @@
           <div class="danger-text">
             <strong>清空全部缓存</strong>
             <p>清除后再次打开页面会重新从 NAS 拉取数据，不影响 NAS 上的任何文件。</p>
-            <label class="danger-check">
-              <input type="checkbox" v-model="includeWallpaper" />
-              <span>同时删除自定义壁纸（不可恢复，需重新上传）</span>
-            </label>
+            <div class="danger-check-group">
+              <label class="danger-check">
+                <input type="checkbox" v-model="includeServerCacheInAll" />
+                <span>包含服务端缩略图磁盘缓存 (server/cache)</span>
+              </label>
+              <label class="danger-check">
+                <input type="checkbox" v-model="includeWallpaper" />
+                <span>同时删除自定义壁纸（不可恢复，需重新上传）</span>
+              </label>
+            </div>
           </div>
-          <button class="danger-btn" :disabled="clearing || stats.items.length === 0" @click="doClearAll">
+          <button class="danger-btn" :disabled="clearing || (stats.items.length === 0 && serverStats.totalFiles === 0)" @click="doClearAll">
             {{ clearing ? '清理中…' : '清空缓存' }}
           </button>
         </div>
@@ -115,6 +175,8 @@ import {
   getStorageQuota,
   removeCacheItem,
   clearAllCache,
+  getServerCacheStats,
+  clearServerCache,
   formatBytes
 } from '../utils/cache.js';
 
@@ -125,6 +187,12 @@ const props = defineProps({
 const emit = defineEmits(['close', 'changed']);
 
 const stats = ref({ items: [], totalBytes: 0, byCategory: {} });
+const serverStats = ref({ totalFiles: 0, totalBytes: 0, byCategory: {} });
+const loadingServerCache = ref(false);
+const clearingServer = ref(false);
+const includeIcons = ref(false);
+const includeServerCacheInAll = ref(true);
+
 const quota = ref(null);
 const removingId = ref('');
 const clearing = ref(false);
@@ -150,12 +218,39 @@ function showNotice(msg, isError = false) {
   noticeError.value = isError;
   setTimeout(() => {
     if (notice.value === msg) notice.value = '';
-  }, 3000);
+  }, 3500);
+}
+
+async function refreshServerCache() {
+  loadingServerCache.value = true;
+  try {
+    serverStats.value = await getServerCacheStats();
+  } finally {
+    loadingServerCache.value = false;
+  }
 }
 
 async function refresh() {
   stats.value = await getCacheStats();
   quota.value = await getStorageQuota();
+  await refreshServerCache();
+}
+
+async function doClearServerCache() {
+  clearingServer.value = true;
+  try {
+    const kind = includeIcons.value ? 'all' : 'thumbnails';
+    const res = await clearServerCache(kind);
+    await refresh();
+    emit('changed');
+    if (res.status === 'ok') {
+      showNotice(res.message || '已清空服务端缩略图缓存并刷新版本');
+    } else {
+      showNotice(`清理失败: ${res.message}`, true);
+    }
+  } finally {
+    clearingServer.value = false;
+  }
 }
 
 async function removeItem(it) {
@@ -174,14 +269,22 @@ async function removeItem(it) {
 async function doClearAll() {
   clearing.value = true;
   try {
+    let serverNotice = '';
+    if (includeServerCacheInAll.value) {
+      const sRes = await clearServerCache('all');
+      if (sRes.status === 'ok') {
+        serverNotice = `、服务端 ${sRes.clearedCount} 个文件`;
+      }
+    }
+
     const res = await clearAllCache({ includeWallpaper: includeWallpaper.value });
     await refresh();
     emit('changed');
     const extra = includeWallpaper.value ? '（含自定义壁纸）' : '';
     showNotice(
       res.failed > 0
-        ? `已清理 ${res.cleared} 项${extra}，${res.failed} 项失败`
-        : `已清空全部缓存${extra}`,
+        ? `已清理本地 ${res.cleared} 项${serverNotice}${extra}，${res.failed} 项失败`
+        : `已清空全部本地缓存${serverNotice}${extra}，并自动击穿浏览器强缓存`,
       res.failed > 0
     );
   } finally {
@@ -194,6 +297,8 @@ watch(() => props.visible, (val) => {
   if (val) {
     notice.value = '';
     includeWallpaper.value = false;
+    includeIcons.value = false;
+    includeServerCacheInAll.value = true;
     refresh();
   }
 });
@@ -471,6 +576,116 @@ watch(() => props.visible, (val) => {
   color: var(--mi-text-sub);
   text-align: center;
   padding: 8px 0;
+}
+
+/* 服务端缩略图缓存卡片 */
+.server-cache-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sc-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sc-header-row .sc-title {
+  margin-bottom: 0;
+}
+
+.sc-refresh-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--mi-radius-sm);
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-text-main);
+  border: 1px solid var(--mi-card-border);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sc-refresh-btn:hover:not(:disabled) {
+  background: var(--mi-control-bg);
+  color: var(--mi-orange);
+}
+
+.server-cache-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.sc-stat-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--mi-radius-sm);
+  background: var(--mi-card-bg);
+  border: 1px solid var(--mi-card-border);
+}
+
+.sc-stat-pill .label {
+  font-size: 11px;
+  color: var(--mi-text-sub);
+}
+
+.sc-stat-pill .val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mi-text-main);
+}
+
+.sc-stat-pill .val.highlight {
+  color: var(--mi-orange);
+  font-size: 15px;
+}
+
+.server-cache-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--mi-border);
+}
+
+.server-action-desc p {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--mi-text-sub);
+  line-height: 1.4;
+}
+
+.server-clear-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: var(--mi-radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--mi-status-red-soft);
+  color: var(--mi-status-red);
+  border: 1px solid var(--mi-status-red);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.server-clear-btn:hover:not(:disabled) {
+  background: var(--mi-status-red);
+  color: var(--mi-on-danger-solid, #ffffff);
+}
+
+.server-clear-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.danger-check-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* 危险操作区 */

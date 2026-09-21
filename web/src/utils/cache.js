@@ -325,6 +325,85 @@ export async function clearAllCache({ includeWallpaper = false } = {}) {
   return result;
 }
 
+// ==========================================================================
+// 服务端磁盘缓存管理 (server/cache) 与浏览器 HTTP Disk Cache 强缓存击穿控制
+// ==========================================================================
+
+const THUMB_EPOCH_KEY = 'mijia_thumb_epoch';
+
+/** 获取当前缩略图版本戳（用于在 URL 拼接 &v= 防止命中浏览器不可变强缓存） */
+export function getThumbEpoch() {
+  try {
+    const v = localStorage.getItem(THUMB_EPOCH_KEY);
+    return v ? parseInt(v, 10) : 1;
+  } catch (_) {
+    return 1;
+  }
+}
+
+/** 递增并保存缩略图版本戳 */
+export function bumpThumbEpoch(newEpoch) {
+  try {
+    const v = newEpoch || Date.now();
+    localStorage.setItem(THUMB_EPOCH_KEY, String(v));
+    return v;
+  } catch (_) {
+    return Date.now();
+  }
+}
+
+/**
+ * 获取服务端 (server/cache) 缩略图与转码产物的磁盘统计数据
+ */
+export async function getServerCacheStats() {
+  try {
+    const res = await fetch('/api/cache/stats');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.epoch) {
+      bumpThumbEpoch(data.epoch);
+    }
+    return data;
+  } catch (e) {
+    return {
+      status: 'error',
+      message: e.message,
+      totalFiles: 0,
+      totalBytes: 0,
+      byCategory: {
+        thumbnails: { count: 0, bytes: 0, label: 'WebDAV 缩略图 (.img)' },
+        transcoded: { count: 0, bytes: 0, label: 'HEIC 转码副本 (.jpg)' },
+        icons: { count: 0, bytes: 0, label: '系统/应用图标 (.png)' }
+      }
+    };
+  }
+}
+
+/**
+ * 请求服务端安全清理磁盘缓存
+ * @param {string} kind "thumbnails" | "all"
+ */
+export async function clearServerCache(kind = 'thumbnails') {
+  try {
+    const res = await fetch('/api/cache/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // 清理成功后立即刷新本地版本号，击穿浏览器的 HTTP Disk Cache！
+    if (data.epoch) {
+      bumpThumbEpoch(data.epoch);
+    } else {
+      bumpThumbEpoch(Date.now());
+    }
+    return data;
+  } catch (e) {
+    return { status: 'error', message: e.message };
+  }
+}
+
 /** 人类可读的体积格式。 */
 export function formatBytes(bytes) {
   const b = Number(bytes) || 0;

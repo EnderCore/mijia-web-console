@@ -83,6 +83,9 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
+// 服务端缩略图缓存版本戳：清理缓存后递增，联动前端 URL 破除浏览器 HTTP 强缓存
+let CACHE_EPOCH = Date.now();
+
 // 2. 自动定位证书与 DID（DID 从证书文件名解析，无需硬编码）
 let DID = "";
 let cert = null;
@@ -1027,10 +1030,10 @@ const server = http.createServer(async (req, res) => {
           isDir: isDir,
           type: isDir ? "dir" : (isPhoto ? "photo" : (isVideo ? "video" : "doc")),
           thumbnail: (isPhoto || isVideo)
-            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=small`
+            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=small&v=${CACHE_EPOCH}`
             : (isDir ? generateSvgThumbnail(f.name, "#64748b", "#334155", "📁") : generateSvgThumbnail(f.name, "#94a3b8", "#475569", "📄")),
           previewUrl: (isPhoto || isVideo)
-            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview`
+            ? `/api/thumbnail?path=${encodeURIComponent(fullPath)}&size=preview&v=${CACHE_EPOCH}`
             : "",
           videoUrl: isVideo
             ? `/api/stream?path=${encodeURIComponent(fullPath)}`
@@ -1229,6 +1232,118 @@ const server = http.createServer(async (req, res) => {
 
     dav.pipe(writeStream);
     dav.pipe(res);
+    return;
+  }
+
+  // 6.1 /api/cache/stats 服务端磁盘缓存统计 (轻量扫描，返回文件数与体积)
+  if (pathname === "/api/cache/stats") {
+    try {
+      const files = fs.existsSync(CACHE_DIR) ? fs.readdirSync(CACHE_DIR) : [];
+      let totalBytes = 0;
+      let imgCount = 0;
+      let imgBytes = 0;
+      let jpgCount = 0;
+      let jpgBytes = 0;
+      let pngCount = 0;
+      let pngBytes = 0;
+      let oldestMtime = 0;
+      let newestMtime = 0;
+
+      for (const f of files) {
+        if (f.startsWith("temp_")) continue; // 跳过正在并发传输的临时文件
+        const p = path.join(CACHE_DIR, f);
+        try {
+          const stat = fs.statSync(p);
+          totalBytes += stat.size;
+          const mt = stat.mtimeMs;
+          if (!oldestMtime || mt < oldestMtime) oldestMtime = mt;
+          if (!newestMtime || mt > newestMtime) newestMtime = mt;
+
+          if (f.endsWith(".img")) {
+            imgCount++;
+            imgBytes += stat.size;
+          } else if (f.endsWith(".jpg") || f.endsWith(".jpeg")) {
+            jpgCount++;
+            jpgBytes += stat.size;
+          } else if (f.endsWith(".png")) {
+            pngCount++;
+            pngBytes += stat.size;
+          }
+        } catch (_) {}
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: "ok",
+        cacheDir: CACHE_DIR,
+        epoch: CACHE_EPOCH,
+        totalFiles: imgCount + jpgCount + pngCount,
+        totalBytes: totalBytes,
+        byCategory: {
+          thumbnails: { count: imgCount, bytes: imgBytes, label: "WebDAV 缩略图 (.img)" },
+          transcoded: { count: jpgCount, bytes: jpgBytes, label: "HEIC 转码副本 (.jpg)" },
+          icons: { count: pngCount, bytes: pngBytes, label: "系统/应用图标 (.png)" }
+        },
+        oldestMtime,
+        newestMtime
+      }));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
+    }
+    return;
+  }
+
+  // 6.2 /api/cache/clear 服务端磁盘缓存安全清理
+  if (pathname === "/api/cache/clear" && req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", () => {
+      try {
+        let payload = {};
+        try { payload = JSON.parse(body); } catch (_) {}
+        const kind = payload.kind || "thumbnails"; // "thumbnails" | "all"
+        const files = fs.existsSync(CACHE_DIR) ? fs.readdirSync(CACHE_DIR) : [];
+        let clearedCount = 0;
+        let freedBytes = 0;
+
+        for (const f of files) {
+          if (f.startsWith("temp_")) continue; // 坚决不误删并发传输中的临时文件
+          let shouldDelete = false;
+          if (kind === "all") {
+            shouldDelete = f.endsWith(".img") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".png");
+          } else {
+            // 默认清理缩略图与转码产物
+            shouldDelete = f.endsWith(".img") || f.endsWith(".jpg") || f.endsWith(".jpeg");
+          }
+
+          if (shouldDelete) {
+            const p = path.join(CACHE_DIR, f);
+            try {
+              const stat = fs.statSync(p);
+              fs.unlinkSync(p);
+              clearedCount++;
+              freedBytes += stat.size;
+            } catch (_) {}
+          }
+        }
+
+        // 递增版本戳，使得前端后续获取的缩略图 URL 变更，破除浏览器 HTTP Disk Cache 强缓存！
+        CACHE_EPOCH = Date.now();
+
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({
+          status: "ok",
+          clearedCount,
+          freedBytes,
+          epoch: CACHE_EPOCH,
+          message: `已成功清理 ${clearedCount} 个服务端缓存文件，释放 ${(freedBytes / 1024 / 1024).toFixed(2)} MB 空间`
+        }));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ status: "error", message: e.message }));
+      }
+    });
     return;
   }
 
