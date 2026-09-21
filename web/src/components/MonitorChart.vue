@@ -1,5 +1,5 @@
 <template>
-  <div class="monitor-card">
+  <div class="monitor-card mi-surface" style="--mi-surface-label: '№ 02'">
     <div class="card-header">
       <div class="header-left">
         <span class="icon">⚡</span>
@@ -292,12 +292,12 @@ const lastPoint = computed(() => {
 
 .ping-badge.text-green {
   background: #e8f8f0;
-  color: #10b981;
+  color: var(--mi-status-green);
 }
 
 .ping-badge.text-yellow {
-  background: #fef3c7;
-  color: #d97706;
+  background: var(--mi-status-orange-soft);
+  color: var(--mi-status-orange);
 }
 
 .hardware-meters {
@@ -308,7 +308,7 @@ const lastPoint = computed(() => {
 }
 
 .hw-item {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   padding: 12px 14px;
   border-radius: var(--mi-radius-md);
   border: 1px solid var(--mi-border);
@@ -332,7 +332,7 @@ const lastPoint = computed(() => {
 
 .hw-bar {
   height: 6px;
-  background: var(--mi-control-sub-bg, #e2e8f0);
+  background: var(--mi-control-sub-bg);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -345,7 +345,7 @@ const lastPoint = computed(() => {
 }
 
 .hw-bar-fill.orange {
-  background: linear-gradient(90deg, #ff8533, #ff6700);
+  background: linear-gradient(90deg, var(--mi-orange), var(--mi-orange));
 }
 
 .hw-bar-fill.blue {
@@ -360,7 +360,7 @@ const lastPoint = computed(() => {
 }
 
 .tunnel-info {
-  background: var(--mi-card-sub-bg, #f8fafc);
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-md);
   padding: 12px 14px;
   margin-bottom: 16px;
@@ -386,7 +386,7 @@ const lastPoint = computed(() => {
 }
 
 .info-row .highlight {
-  color: var(--mi-orange);
+  color: var(--mi-accent-text);
 }
 
 .chart-container {
@@ -431,7 +431,7 @@ const lastPoint = computed(() => {
 }
 
 .text-blue {
-  color: #2563eb;
+  color: var(--mi-status-blue);
 }
 
 .text-orange {
@@ -439,7 +439,7 @@ const lastPoint = computed(() => {
 }
 
 .text-red {
-  color: #dc2626;
+  color: var(--mi-status-red);
 }
 
 .font-mono {

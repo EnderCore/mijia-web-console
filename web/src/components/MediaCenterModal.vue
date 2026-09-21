@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
-    <div class="modal-container">
+    <div class="modal-container mi-surface">
       <div class="modal-header">
         <div class="modal-title">
           <span class="icon">🎬</span>
@@ -60,7 +60,7 @@ defineEmits(['close']);
   width: 90vw;
   height: 85vh;
   max-width: 1300px;
-  background: #ffffff;
+  background: var(--mi-card-bg);
   border-radius: var(--mi-radius-lg);
   display: flex;
   flex-direction: column;
@@ -74,7 +74,7 @@ defineEmits(['close']);
   align-items: center;
   padding: 16px 24px;
   border-bottom: 1px solid var(--mi-border);
-  background: #fcfdfe;
+  background: var(--mi-card-sub-bg);
 }
 
 .modal-title {
@@ -123,7 +123,7 @@ defineEmits(['close']);
 }
 
 .close-btn:hover {
-  background: #f0f2f5;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-main);
 }
 
@@ -147,25 +147,25 @@ defineEmits(['close']);
   justify-content: center;
   gap: 10px;
   padding: 40px;
-  background: #0f172a;
+  background: var(--mi-bg);
   text-align: center;
 }
 
 .err-title {
   font-size: 15px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--mi-text-main);
 }
 
 .err-msg {
   font-size: 13px;
-  color: #fca5a5;
+  color: var(--mi-status-red);
 }
 
 .err-hint {
   font-size: 12px;
   line-height: 1.7;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   max-width: 460px;
 }
 

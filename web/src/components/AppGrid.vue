@@ -1,5 +1,5 @@
 <template>
-  <div class="app-grid-section">
+  <div class="app-grid-section mi-surface" style="--mi-surface-label: '№ 03'">
     <div class="section-title">
       <div class="title-left">
         <h3>功能中心与小程序</h3>
@@ -98,15 +98,15 @@ function handleAppClick(app) {
 .count-tag {
   font-size: 12px;
   color: var(--mi-text-sub);
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   padding: 2px 8px;
   border-radius: 10px;
 }
 
 .category-pills .pill-badge {
   font-size: 12px;
-  color: var(--mi-orange);
-  background: rgba(255, 103, 0, 0.1);
+  color: var(--mi-accent-text-on-soft);
+  background: var(--mi-accent-soft);
   padding: 4px 12px;
   border-radius: 12px;
   font-weight: 600;
@@ -124,7 +124,7 @@ function handleAppClick(app) {
   align-items: center;
   padding: 16px 8px;
   border-radius: var(--mi-radius-md);
-  background: var(--mi-card-sub-bg, #fcfdfe);
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border, transparent);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
@@ -132,7 +132,7 @@ function handleAppClick(app) {
 }
 
 .app-card:hover {
-  background: var(--mi-control-bg, #ffffff);
+  background: var(--mi-control-bg);
   border-color: var(--mi-orange);
   box-shadow: var(--mi-shadow-hover);
   transform: translateY(-2px);
@@ -142,7 +142,7 @@ function handleAppClick(app) {
   width: 52px;
   height: 52px;
   border-radius: 14px;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -181,18 +181,18 @@ function handleAppClick(app) {
 
 .badge.web {
   background: rgba(37, 99, 235, 0.12);
-  color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: var(--mi-status-blue);
+  border: 1px solid var(--mi-status-blue-soft);
 }
 
 .badge.running {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: var(--mi-status-green-soft);
+  color: var(--mi-status-green);
+  border: 1px solid var(--mi-status-green-soft);
 }
 
 .badge.uninstalled {
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-sub);
   border: 1px solid var(--mi-border, transparent);
 }

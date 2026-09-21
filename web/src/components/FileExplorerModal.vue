@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="explorer-backdrop" @click.self="$emit('close')">
-    <div class="explorer-modal">
+    <div class="explorer-modal mi-surface">
       <!-- 头部导航与操作栏 -->
       <div class="explorer-header">
         <div class="header-left">
@@ -996,7 +996,7 @@ function handleFileClick(file) {
   width: 92vw;
   max-width: 1380px;
   height: 88vh;
-  background: var(--mi-card-bg, #ffffff);
+  background: var(--mi-card-bg);
   border-radius: var(--mi-radius-lg);
   display: flex;
   flex-direction: column;
@@ -1010,7 +1010,7 @@ function handleFileClick(file) {
   align-items: center;
   padding: 16px 24px;
   border-bottom: 1px solid var(--mi-border);
-  background: var(--mi-card-sub-bg, #fcfdfe);
+  background: var(--mi-card-sub-bg);
 }
 
 .header-left {
@@ -1031,7 +1031,7 @@ function handleFileClick(file) {
 
 .path-badge {
   font-size: 11px;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-sub);
   padding: 3px 8px;
   border-radius: 6px;
@@ -1048,7 +1048,7 @@ function handleFileClick(file) {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   border-radius: 20px;
   padding: 6px 14px;
   width: 220px;
@@ -1065,7 +1065,7 @@ function handleFileClick(file) {
 
 .view-toggle {
   display: flex;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   border-radius: 8px;
   padding: 2px;
 }
@@ -1079,7 +1079,7 @@ function handleFileClick(file) {
 }
 
 .v-btn.active {
-  background: var(--mi-control-bg, #ffffff);
+  background: var(--mi-control-bg);
   color: var(--mi-orange);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
@@ -1099,7 +1099,7 @@ function handleFileClick(file) {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-main);
   padding: 6px 12px;
   border-radius: 18px;
@@ -1110,7 +1110,7 @@ function handleFileClick(file) {
 }
 
 .action-pill:hover:not(:disabled) {
-  background: #e2e8f0;
+  background: var(--mi-control-bg);
   color: var(--mi-text-main);
 }
 
@@ -1120,12 +1120,12 @@ function handleFileClick(file) {
 }
 
 .upload-pill {
-  background: linear-gradient(135deg, #ff6700, #ff8533);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--mi-orange), var(--mi-orange-hover));
+  color: var(--mi-on-accent);
 }
 
 .upload-pill:hover:not(:disabled) {
-  color: #ffffff;
+  color: var(--mi-on-accent);
   opacity: 0.92;
 }
 
@@ -1137,7 +1137,7 @@ function handleFileClick(file) {
 .upload-bar {
   position: relative;
   height: 26px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   overflow: hidden;
   border-bottom: 1px solid var(--mi-border);
 }
@@ -1145,7 +1145,7 @@ function handleFileClick(file) {
 .upload-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, #ff6700, #ffa04d);
+  background: linear-gradient(90deg, var(--mi-orange), var(--mi-orange));
   transition: width 0.2s ease;
 }
 
@@ -1157,7 +1157,7 @@ function handleFileClick(file) {
   line-height: 26px;
   font-size: 11px;
   font-weight: 600;
-  color: #334155;
+  color: var(--mi-text-main);
 }
 
 /* 操作结果提示 */
@@ -1176,15 +1176,15 @@ function handleFileClick(file) {
 }
 
 .toast-msg.ok {
-  background: #ecfdf5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
+  background: var(--mi-status-green-soft);
+  color: var(--mi-status-green);
+  border: 1px solid var(--mi-status-green-soft);
 }
 
 .toast-msg.err {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: var(--mi-status-red-soft);
+  color: var(--mi-status-red);
+  border: 1px solid var(--mi-status-red-soft);
 }
 
 /* 卡片悬浮操作 */
@@ -1206,7 +1206,8 @@ function handleFileClick(file) {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--mi-card-bg);
+  color: var(--mi-text-main);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -1216,12 +1217,12 @@ function handleFileClick(file) {
 }
 
 .ca-btn:hover {
-  background: #ffffff;
+  background: var(--mi-control-sub-bg);
   transform: scale(1.08);
 }
 
 .ca-btn.danger:hover {
-  background: #fee2e2;
+  background: var(--mi-status-red-soft);
 }
 
 /* 表格行操作 */
@@ -1234,7 +1235,7 @@ function handleFileClick(file) {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -1243,11 +1244,11 @@ function handleFileClick(file) {
 }
 
 .row-op:hover {
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg);
 }
 
 .row-op.danger:hover {
-  background: #fee2e2;
+  background: var(--mi-status-red-soft);
 }
 
 .explorer-body {
@@ -1259,7 +1260,7 @@ function handleFileClick(file) {
 /* 左侧目录树 */
 .sidebar-tree {
   width: 240px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-right: 1px solid var(--mi-border);
   padding: 20px 14px;
   display: flex;
@@ -1270,7 +1271,7 @@ function handleFileClick(file) {
 .tree-section-title {
   font-size: 11px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   text-transform: uppercase;
   margin-bottom: 6px;
   padding-left: 8px;
@@ -1284,15 +1285,15 @@ function handleFileClick(file) {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s;
-  color: #334155;
+  color: var(--mi-text-main);
 }
 
 .tree-item:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
 }
 
 .tree-item.active {
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
   color: var(--mi-orange);
   font-weight: 600;
 }
@@ -1309,10 +1310,10 @@ function handleFileClick(file) {
 
 .t-count {
   font-size: 11px;
-  background: rgba(0,0,0,0.05);
+  background: var(--mi-control-sub-bg);
   padding: 2px 6px;
   border-radius: 10px;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .tree-divider {
@@ -1331,7 +1332,7 @@ function handleFileClick(file) {
 
 .tree-refresh-btn {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 2px 4px;
   border-radius: 4px;
 }
@@ -1358,23 +1359,23 @@ function handleFileClick(file) {
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
-  color: #334155;
+  color: var(--mi-text-main);
   transition: all 0.15s;
 }
 
 .tree-node-item:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
 }
 
 .tree-node-item.active {
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
   color: var(--mi-orange);
   font-weight: 600;
 }
 
 .node-arrow {
   font-size: 9px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   width: 14px;
   text-align: center;
   cursor: pointer;
@@ -1415,7 +1416,7 @@ function handleFileClick(file) {
 
 .crumb-dropdown-arrow {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 2px 4px;
   margin-left: 2px;
   border-radius: 4px;
@@ -1424,7 +1425,7 @@ function handleFileClick(file) {
 }
 
 .crumb-dropdown-arrow:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-orange);
 }
 
@@ -1432,7 +1433,7 @@ function handleFileClick(file) {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #ffffff;
+  background: var(--mi-card-bg);
   border: 1px solid var(--mi-border);
   border-radius: 10px;
   padding: 6px;
@@ -1450,7 +1451,7 @@ function handleFileClick(file) {
 .crumb-menu-title {
   font-size: 10px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 4px 8px;
   text-transform: uppercase;
 }
@@ -1460,8 +1461,8 @@ function handleFileClick(file) {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-text-main);
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 12px;
@@ -1470,19 +1471,19 @@ function handleFileClick(file) {
 }
 
 .miller-toggle-btn:hover {
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-main);
 }
 
 .miller-toggle-btn.active {
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
   color: var(--mi-orange);
-  border: 1px solid rgba(255, 103, 0, 0.3);
+  border: 1px solid var(--mi-accent-soft);
 }
 
 /* 核心：macOS Finder / 飞书级多级分栏流转面板 (Miller Columns) */
 .miller-columns-container {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   border-radius: var(--mi-radius-md);
   margin-bottom: 16px;
@@ -1509,11 +1510,11 @@ function handleFileClick(file) {
   border-right: 1px solid var(--mi-border);
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--mi-card-bg);
 }
 
 .miller-column:nth-child(even) {
-  background: #fcfdfe;
+  background: var(--mi-card-sub-bg);
 }
 
 .column-header {
@@ -1522,10 +1523,10 @@ function handleFileClick(file) {
   gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--mi-border);
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   font-size: 11px;
   font-weight: 700;
-  color: #475569;
+  color: var(--mi-text-main);
 }
 
 .ch-title {
@@ -1537,10 +1538,10 @@ function handleFileClick(file) {
 
 .ch-count {
   font-size: 10px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--mi-control-sub-bg);
   padding: 1px 6px;
   border-radius: 8px;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .column-items-list {
@@ -1559,18 +1560,18 @@ function handleFileClick(file) {
   padding: 7px 10px;
   border-radius: 6px;
   font-size: 12px;
-  color: #334155;
+  color: var(--mi-text-main);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .column-item:hover {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
 }
 
 .column-item.active {
   background: var(--mi-orange);
-  color: #ffffff;
+  color: var(--mi-on-accent);
   font-weight: 600;
 }
 
@@ -1579,7 +1580,7 @@ function handleFileClick(file) {
 }
 
 .column-item.active .ci-arrow {
-  color: #ffffff;
+  color: var(--mi-on-accent);
   opacity: 1;
 }
 
@@ -1597,7 +1598,7 @@ function handleFileClick(file) {
 .ci-arrow {
   font-size: 14px;
   font-weight: bold;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   opacity: 0.7;
 }
 
@@ -1608,7 +1609,7 @@ function handleFileClick(file) {
   justify-content: center;
   gap: 4px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   text-align: center;
   padding: 40px 10px;
 }
@@ -1620,12 +1621,12 @@ function handleFileClick(file) {
 
 .empty-sub {
   font-size: 10px;
-  color: #cbd5e1;
+  color: var(--mi-text-sub);
 }
 
 .col-loading {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   text-align: center;
   padding: 40px 0;
 }
@@ -1663,25 +1664,25 @@ function handleFileClick(file) {
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 12px;
-  color: #334155;
+  color: var(--mi-text-main);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .crumb-menu-item:hover {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   color: var(--mi-orange);
 }
 
 .crumb-menu-item.active {
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
   color: var(--mi-orange);
   font-weight: 600;
 }
 
 .crumb-menu-loading, .crumb-menu-empty {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 12px;
   text-align: center;
 }
@@ -1693,7 +1694,7 @@ function handleFileClick(file) {
 }
 
 .mount-box {
-  background: #ffffff;
+  background: var(--mi-card-bg);
   border: 1px solid var(--mi-border);
   border-radius: 10px;
   padding: 12px;
@@ -1704,7 +1705,7 @@ function handleFileClick(file) {
 
 .mount-label {
   font-size: 11px;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .mount-val {
@@ -1715,7 +1716,7 @@ function handleFileClick(file) {
 
 .mount-sub {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
 }
 
 /* 右侧内容流 */
@@ -1743,7 +1744,7 @@ function handleFileClick(file) {
 
 .crumb-root {
   cursor: pointer;
-  color: #475569;
+  color: var(--mi-text-main);
   font-weight: 600;
 }
 
@@ -1753,7 +1754,7 @@ function handleFileClick(file) {
 
 .crumb-seg {
   cursor: pointer;
-  color: #475569;
+  color: var(--mi-text-main);
 }
 
 .crumb-seg:hover {
@@ -1761,7 +1762,7 @@ function handleFileClick(file) {
 }
 
 .crumb-sep {
-  color: #cbd5e1;
+  color: var(--mi-text-sub);
 }
 
 .crumb-cur {
@@ -1777,7 +1778,7 @@ function handleFileClick(file) {
 }
 
 .up-btn {
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-orange);
   padding: 4px 10px;
   border-radius: 6px;
@@ -1787,18 +1788,18 @@ function handleFileClick(file) {
 }
 
 .up-btn:hover {
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
 }
 
 .file-summary {
   font-size: 12px;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .folder-loading-tag {
   font-size: 11px;
   color: var(--mi-orange);
-  background: #fff7ed;
+  background: var(--mi-accent-soft);
   padding: 3px 8px;
   border-radius: 6px;
   font-weight: 600;
@@ -1814,10 +1815,10 @@ function handleFileClick(file) {
   gap: 16px;
 }
 
-.skeleton-shimmer {
+.skeleton-shimmer {  /* 微光扫过动画底 */
   width: 140px;
   height: 8px;
-  background: linear-gradient(90deg, #f1f5f9 25%, #fed7aa 50%, #f1f5f9 75%);
+  background: linear-gradient(90deg, var(--mi-control-sub-bg) 25%, var(--mi-accent-soft) 50%, var(--mi-control-sub-bg) 75%);
   background-size: 200% 100%;
   border-radius: 4px;
   animation: shimmer 1.5s infinite;
@@ -1825,7 +1826,7 @@ function handleFileClick(file) {
 
 .skeleton-text {
   font-size: 13px;
-  color: #64748b;
+  color: var(--mi-text-sub);
   font-weight: 500;
 }
 
@@ -1850,7 +1851,7 @@ function handleFileClick(file) {
   border: 1px solid var(--mi-border);
   border-radius: 12px;
   overflow: hidden;
-  background: var(--mi-card-sub-bg, #ffffff);
+  background: var(--mi-card-sub-bg);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1865,7 +1866,7 @@ function handleFileClick(file) {
 
 .card-preview {
   height: 120px;
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1888,7 +1889,7 @@ function handleFileClick(file) {
   bottom: 6px;
   right: 6px;
   background: rgba(0,0,0,0.7);
-  color: #ff8533;
+  color: var(--mi-accent-text);
   padding: 3px 8px;
   border-radius: 6px;
   font-size: 11px;
@@ -1913,12 +1914,12 @@ function handleFileClick(file) {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
 }
 
 /* 列表表格 */
 .files-table-box {
-  background: var(--mi-card-sub-bg, #ffffff);
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1931,7 +1932,7 @@ function handleFileClick(file) {
 }
 
 .files-table th {
-  background: var(--mi-control-sub-bg, #f8fafc);
+  background: var(--mi-control-sub-bg);
   padding: 12px 16px;
   text-align: left;
   font-weight: 600;
@@ -1941,7 +1942,7 @@ function handleFileClick(file) {
 
 .files-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--mi-border, #f1f5f9);
+  border-bottom: 1px solid var(--mi-border);
   color: var(--mi-text-main);
 }
 
@@ -1951,7 +1952,7 @@ function handleFileClick(file) {
 }
 
 .table-row:hover {
-  background: var(--mi-control-bg, #f8fafc);
+  background: var(--mi-control-bg);
 }
 
 .name-cell {
@@ -1974,16 +1975,16 @@ function handleFileClick(file) {
 
 .type-tag {
   font-size: 11px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   padding: 2px 6px;
   border-radius: 4px;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .time-text {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
 }
 
 @keyframes fadeIn {

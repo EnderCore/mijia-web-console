@@ -70,6 +70,19 @@
         <div v-if="transcodingNotice" class="transcode-toast">
           <span>⚡ {{ transcodingNotice }}</span>
         </div>
+
+        <!-- 解码失败/自动兜底提示：此前失败时界面毫无反馈，
+             用户只看到黑屏，连「能不能切转码流」都不知道 -->
+        <div v-if="playerError" class="player-error-toast">
+          <span class="err-icon">⚠️</span>
+          <span class="err-text">{{ playerError }}</span>
+          <button
+            v-if="qualityOptions.length > 1"
+            class="err-action"
+            @click="selectQuality(qualityOptions.find(q => q.key !== 'origin') || qualityOptions[0])"
+          >切换转码流</button>
+          <button v-else class="err-action" @click="reloadCurrent">重试</button>
+        </div>
       </div>
 
       <!-- 底部播放信息栏 -->
@@ -110,9 +123,12 @@ const showResMenu = ref(false);
 const showSubMenu = ref(false);
 const transcodingNotice = ref('');
 const resolutionError = ref('');
+const playerError = ref('');
 const subtitleList = ref([]);
 const currentSubtitle = ref(null);
 let taskId = null;
+// 原画解码失败后是否已经尝试过转码兜底，防止两个档位互相切换形成死循环
+let triedFallback = false;
 
 // 拉取该视频的外挂字幕列表（player/subtitle_get_list，参数是 video_path）
 async function loadSubtitles() {
@@ -172,6 +188,36 @@ function formatSize(bytes) {
 // 直接播放原画的流地址
 function originStreamUrl() {
   return `/api/stream?path=${encodeURIComponent(props.video?.path || '')}`;
+}
+
+/**
+ * 按真实扩展名给出 MIME 类型。
+ *
+ * 之前这里对所有非 HLS 源一律声明 'video/mp4'，但 MKV / AVI / RMVB / TS
+ * 并不是 MP4 容器，video.js 的 MSE 会按错误容器去解析，导致起播失败。
+ * 起播失败又会让 has-started 永不置位（见下方控制条说明），
+ * 于是「视频打不开 + 连进度条都没有」同时发生。
+ */
+function mimeForVideo(pathStr) {
+  const ext = String(pathStr || '').toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/);
+  const table = {
+    mp4: 'video/mp4',
+    m4v: 'video/mp4',
+    webm: 'video/webm',
+    ogv: 'video/ogg',
+    mov: 'video/quicktime',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+    ts: 'video/mp2t',
+    m2ts: 'video/mp2t',
+    flv: 'video/x-flv',
+    rmvb: 'application/vnd.rn-realmedia-vbr',
+    rm: 'application/vnd.rn-realmedia',
+    mpg: 'video/mpeg',
+    mpeg: 'video/mpeg',
+    m3u8: 'application/x-mpegURL'
+  };
+  return table[ext?.[1]] || 'video/mp4';
 }
 
 // 档位对应的播放地址：HLS 档位用 NAS 给的 m3u8，原画用网关的 206 流
@@ -246,9 +292,10 @@ async function selectQuality(q) {
 
   // 换源并保留播放进度
   const isHls = /\.m3u8(\?|$)/i.test(q.url || '');
+  playerError.value = '';
   player.src({
     src: streamUrlFor(q),
-    type: isHls ? 'application/x-mpegURL' : 'video/mp4'
+    type: isHls ? 'application/x-mpegURL' : mimeForVideo(props.video?.path)
   });
 
   player.ready(() => {
@@ -259,12 +306,32 @@ async function selectQuality(q) {
   });
 }
 
+/**
+ * 重试当前档位。
+ * NAS 隧道断开或网关临时 500 时，重新加载流地址即可恢复，
+ * 不需要用户关闭播放器再重新打开。
+ */
+function reloadCurrent() {
+  if (!player) return;
+  playerError.value = '';
+  triedFallback = false;
+  const q = currentQuality.value;
+  const isHls = /\.m3u8(\?|$)/i.test(q.url || '');
+  player.src({
+    src: streamUrlFor(q),
+    type: isHls ? 'application/x-mpegURL' : mimeForVideo(props.video?.path)
+  });
+  player.play().catch(() => {});
+}
+
 // 初始化播放器
 async function initPlayer() {
   await nextTick();
   if (!videoEl.value) return;
 
   resolutionError.value = '';
+  playerError.value = '';
+  triedFallback = false;
   qualityOptions.value = [qualityOptions.value[0]];
   currentQuality.value = qualityOptions.value[0];
 
@@ -273,15 +340,73 @@ async function initPlayer() {
     controls: true,
     autoplay: true,
     fluid: true,
+    // 用自带的自定义错误面板替代 video.js 的英文弹层：
+    // 那个弹层写死了深色样式、且文案是 MEDIA_ERR 的英文映射，
+    // 既不适配主题也没法告诉用户「可以切转码流」。
+    errorDisplay: false,
     playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
     sources: [{
       src: originStreamUrl(),
-      type: 'video/mp4'
+      type: mimeForVideo(props.video?.path)
     }]
+  });
+
+  player.on('error', handlePlaybackError);
+
+  // 控制条默认要等 `playing` 才显示（vjs-has-started）。
+  // 但「自动播放被浏览器拦截」「用户想先拖着看看」这类情况下并不会触发 playing，
+  // 结果就是元数据都加载完了、时长也有了，界面上却连进度条都看不到。
+  // 一旦确定能播（拿到时长），就主动把控制条显出来，
+  // 让用户至少能看到时间轴并手动点播放。
+  player.on('loadedmetadata', () => {
+    if (player && player.duration() > 0) {
+      player.hasStarted(true);
+    }
   });
 
   await loadResolutions();
   loadSubtitles();
+}
+
+/**
+ * 播放失败处理。
+ *
+ * 背景：NAS 里的片源格式很杂（MKV/AVI/RMVB 容器、HEVC 编码等），
+ * 浏览器原生解不了。过去这里不做任何处理，表现为「转圈后一直黑屏、
+ * 连进度条都没有」——因为 video.js 的控制条要等 has-started 才显示，
+ * 起播失败就永远不会出现，用户既看不到错误也不知道能做什么。
+ *
+ * 现在的策略：
+ *   1. 原画解不了且 NAS 提供了转码档位 → 自动切到转码流（转码的意义就在此）
+ *   2. 连转码都没有 → 明确告知失败原因与格式，而不是留下一个空壳播放器
+ */
+function handlePlaybackError() {
+  const err = player?.error();
+  if (!err) return;
+
+  const isOrigin = currentQuality.value?.key === 'origin';
+  const fallback = qualityOptions.value.find((q) => q.key !== 'origin');
+
+  // 只在「原画失败」时兜底一次，避免两个档位互相踢来踢去造成死循环
+  if (isOrigin && fallback && !triedFallback) {
+    triedFallback = true;
+    playerError.value = `原画无法直接解码，正在切换至 [${fallback.label}] 转码流…`;
+    selectQuality(fallback);
+    return;
+  }
+
+  const ext = (props.video?.path || '').split('.').pop()?.toUpperCase() || '';
+  const reasons = {
+    1: '播放已中止',
+    2: '网络中断，无法继续加载该视频',
+    3: '视频数据损坏或编码无法解码'
+  };
+  // 注意：错误码 4 同时覆盖「格式不受支持」和「服务端没给出可用数据」
+  // （网关 500、隧道断开都会落到这里）。不能一口咬定是格式问题，
+  // 否则会把 NAS 掉线误报成浏览器不支持，把用户引向错误的方向。
+  playerError.value =
+    reasons[err.code] ||
+    `无法播放该视频${ext ? `（${ext}）` : ''}：可能是浏览器不支持其编码，或 NAS 未返回有效数据`;
 }
 
 function handleClose() {
@@ -325,7 +450,8 @@ onBeforeUnmount(() => {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(10, 15, 29, 0.85);
+  /* 灯箱遮罩：无论浅色还是深色主题都必须压暗，才能把注意力集中到画面上 */
+  background: var(--mi-player-scrim, rgba(10, 14, 24, 0.88));
   backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
@@ -337,22 +463,26 @@ onBeforeUnmount(() => {
 .player-container {
   width: 88vw;
   max-width: 1180px;
-  background: #0f172a;
+  background: var(--mi-card-bg);
   border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--mi-card-border);
 }
 
+/* 外壳（标题栏 / 底部信息栏）跟随主题。
+   此前这里写死 #090e1a，浅色主题下 --mi-text-main(#1f2329)
+   压在这个深底上只有 1.22:1，标题与路径几乎看不见。 */
 .player-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: #090e1a;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--mi-player-shell-bg, var(--mi-card-bg));
+  color: var(--mi-player-shell-text);
+  border-bottom: 1px solid var(--mi-card-border);
 }
 
 .player-title {
@@ -369,7 +499,7 @@ onBeforeUnmount(() => {
 .file-name {
   font-size: 15px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--mi-player-shell-text, var(--mi-text-main));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -378,8 +508,8 @@ onBeforeUnmount(() => {
 
 .file-badge {
   font-size: 11px;
-  background: rgba(255, 103, 0, 0.15);
-  color: #ff6700;
+  background: var(--mi-accent-soft);
+  color: var(--mi-accent-text);
   padding: 2px 8px;
   border-radius: 6px;
   font-weight: 600;
@@ -397,9 +527,9 @@ onBeforeUnmount(() => {
 }
 
 .res-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--mi-control-bg-glass, rgba(255, 255, 255, 0.72));
+  color: var(--mi-control-text, var(--mi-text-main));
+  border: 1px solid var(--mi-control-border-glass, var(--mi-card-border));
   padding: 6px 14px;
   border-radius: 20px;
   font-size: 13px;
@@ -411,9 +541,9 @@ onBeforeUnmount(() => {
 }
 
 .res-btn:hover {
-  background: rgba(255, 103, 0, 0.2);
-  border-color: #ff6700;
-  color: #ff8533;
+  background: var(--mi-accent-soft);
+  border-color: var(--mi-accent-text);
+  color: var(--mi-accent-text-on-soft, var(--mi-accent-text));
 }
 
 .arrow {
@@ -425,12 +555,12 @@ onBeforeUnmount(() => {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  background: #1e293b;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--mi-card-bg);
+  border: 1px solid var(--mi-card-border);
   border-radius: 12px;
   padding: 6px;
   min-width: 190px;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -448,39 +578,39 @@ onBeforeUnmount(() => {
 }
 
 .res-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--mi-control-sub-bg);
 }
 
 .res-item.active {
-  background: rgba(255, 103, 0, 0.2);
+  background: var(--mi-accent-soft);
 }
 
 .res-item.active .q-label {
-  color: #ff6700;
+  color: var(--mi-accent-text-on-soft, var(--mi-accent-text));
   font-weight: 700;
 }
 
 .q-label {
   font-size: 13px;
-  color: #e2e8f0;
+  color: var(--mi-text-main);
 }
 
 .q-badge {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-text-sub);
 }
 
 .q-badge.硬件加速 {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  background: var(--mi-status-green-soft);
+  color: var(--mi-status-green);
 }
 
 .close-btn {
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--mi-player-shell-text-sub, var(--mi-text-sub));
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -491,12 +621,13 @@ onBeforeUnmount(() => {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-player-shell-text, var(--mi-text-main));
 }
 
 .player-body {
   position: relative;
+  /* 视频自适应黑边区域：画面的垫底，固定纯黑才正确 */
   background: #000000;
   display: flex;
   align-items: center;
@@ -516,9 +647,9 @@ onBeforeUnmount(() => {
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(255, 103, 0, 0.5);
-  color: #ff8533;
+  background: var(--mi-player-scrim, rgba(10, 14, 24, 0.88));
+  border: 1px solid var(--mi-accent-soft);
+  color: var(--mi-player-scrim-text, #ffffff);
   padding: 8px 18px;
   border-radius: 20px;
   font-size: 13px;
@@ -528,15 +659,58 @@ onBeforeUnmount(() => {
   animation: fadeIn 0.2s ease-out;
 }
 
+/* 解码失败提示：压在视频画面之上，所以用固定的深色遮罩 + 高对比文字 */
+.player-error-toast {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 82%;
+  background: var(--mi-player-scrim, rgba(10, 14, 24, 0.88));
+  border: 1px solid var(--mi-status-orange);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mi-player-scrim-text, #ffffff);
+  backdrop-filter: blur(8px);
+  z-index: 60;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.player-error-toast .err-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.player-error-toast .err-text {
+  min-width: 0;
+}
+
+.err-action {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--mi-orange);
+  color: var(--mi-on-accent);
+  border: none;
+  cursor: pointer;
+}
+
 .player-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 24px;
-  background: #090e1a;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--mi-player-shell-bg, var(--mi-card-bg));
+  border-top: 1px solid var(--mi-card-border);
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--mi-player-shell-text-sub, var(--mi-text-sub));
 }
 
 .footer-left {
@@ -546,15 +720,15 @@ onBeforeUnmount(() => {
 }
 
 .footer-left b {
-  color: #38bdf8;
+  color: var(--mi-status-cyan);
 }
 
 .path-code {
   font-family: monospace;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--mi-control-sub-bg);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #cbd5e1;
+  color: var(--mi-text-sub);
 }
 
 .dot {
@@ -562,7 +736,7 @@ onBeforeUnmount(() => {
 }
 
 .res-warn {
-  color: #fbbf24;
+  color: var(--mi-status-orange);
 }
 
 @keyframes fadeIn {

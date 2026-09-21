@@ -1,5 +1,5 @@
 <template>
-  <div class="recent-media-card">
+  <div class="recent-media-card mi-surface" style="--mi-surface-label: '№ 04'">
     <div class="card-header">
       <div class="header-left">
         <span class="icon">📸</span>
@@ -183,7 +183,7 @@ function formatDate(timestamp) {
 .file-count {
   font-size: 12px;
   color: var(--mi-text-sub);
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   padding: 3px 10px;
   border-radius: 12px;
 }
@@ -200,18 +200,18 @@ function formatDate(timestamp) {
   font-size: 13px;
   font-weight: 600;
   color: var(--mi-text-sub);
-  background: var(--mi-control-sub-bg, #f5f6f8);
+  background: var(--mi-control-sub-bg);
   transition: all 0.2s;
 }
 
 .tab-btn:hover {
-  background: var(--mi-control-bg, #edf0f4);
+  background: var(--mi-control-bg);
   color: var(--mi-text-main);
 }
 
 .tab-btn.active {
   background: var(--mi-orange);
-  color: white;
+  color: var(--mi-on-accent);
 }
 
 .limit-selector {
@@ -225,7 +225,7 @@ function formatDate(timestamp) {
 
 .limit-select {
   border: 1px solid var(--mi-border);
-  background: var(--mi-control-bg, #ffffff);
+  background: var(--mi-control-bg);
   color: var(--mi-text-main);
   border-radius: 8px;
   padding: 4px 8px;
@@ -240,7 +240,7 @@ function formatDate(timestamp) {
 }
 
 .load-more-btn {
-  background: var(--mi-control-sub-bg, #f1f5f9);
+  background: var(--mi-control-sub-bg);
   color: var(--mi-orange);
   border: 1px solid var(--mi-border);
   border-radius: 20px;
@@ -252,7 +252,7 @@ function formatDate(timestamp) {
 }
 
 .load-more-btn:hover {
-  background: rgba(255, 103, 0, 0.1);
+  background: var(--mi-accent-soft);
   border-color: var(--mi-orange);
 }
 
@@ -269,7 +269,7 @@ function formatDate(timestamp) {
 
 .media-item {
   border-radius: var(--mi-radius-md);
-  background: var(--mi-card-sub-bg, #ffffff);
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   overflow: hidden;
   cursor: pointer;
@@ -284,7 +284,7 @@ function formatDate(timestamp) {
 .thumb-container {
   height: 140px;
   position: relative;
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg);
   overflow: hidden;
 }
 
@@ -316,7 +316,7 @@ function formatDate(timestamp) {
 
 .play-icon {
   font-size: 10px;
-  color: #ff6700;
+  color: var(--mi-accent-text-on-soft);
 }
 
 .res-tag {

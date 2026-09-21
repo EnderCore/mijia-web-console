@@ -5,7 +5,7 @@
       v-if="currentWallpaperUrl || currentTheme.bgEnabled"
       class="app-bg-layer"
       :style="{
-        backgroundImage: currentWallpaperUrl ? `url(${currentWallpaperUrl})` : 'none',
+        backgroundImage: 'var(--mi-custom-bg-image, none)',
         filter: `brightness(var(--mi-bg-brightness)) blur(var(--mi-bg-blur))`,
         opacity: `var(--mi-bg-opacity)`
       }"
@@ -27,6 +27,7 @@
       @refresh="loadAllData"
       @open-explorer="showFileExplorer = true"
       @open-theme="showThemeModal = true"
+      @open-cache="showCacheModal = true"
     />
 
     <!-- 苏联/先锋构成主义风格专属：头条号外与工业生产力标语报头 -->
@@ -109,7 +110,7 @@
     </main>
 
     <!-- 底部状态栏 -->
-    <footer class="app-footer">
+    <footer class="app-footer mi-surface">
       <div class="footer-inner">
         <span>米家 Xiaomi Smart Storage Web 控制台 · 硬件级双盘镜像</span>
         <span class="dot">·</span>
@@ -171,8 +172,15 @@
       @close="showThemeModal = false"
     />
 
+    <!-- 本地缓存管理：查看与清理浏览器中缓存的设备数据、壁纸与离线副本 -->
+    <CacheManagerModal
+      :visible="showCacheModal"
+      @close="showCacheModal = false"
+      @changed="loadAllData"
+    />
+
     <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
-      <div class="custom-modal">
+      <div class="custom-modal mi-surface">
         <div class="modal-hdr">
           <div class="modal-hdr-title">
             <span class="hdr-icon">{{ activeDialog.icon || '📱' }}</span>
@@ -399,6 +407,7 @@ import FileExplorerModal from './components/FileExplorerModal.vue';
 import VideoPlayerModal from './components/VideoPlayerModal.vue';
 import DocumentViewerModal from './components/DocumentViewerModal.vue';
 import ThemeSettingsModal from './components/ThemeSettingsModal.vue';
+import CacheManagerModal from './components/CacheManagerModal.vue';
 import { getCachedData, setCachedData } from './utils/cache.js';
 import { usePrivacy, maskValue } from './utils/privacy.js';
 import {
@@ -412,6 +421,7 @@ import {
 // 状态定义
 const deviceName = ref('小米智能存储 (NAS)');
 const showThemeModal = ref(false);
+const showCacheModal = ref(false);
 
 // 隐私遮罩：masked 为共享单例，maskValue 内部依赖它，所以模板里调用 mask() 会自动重算
 const { masked: privacyMasked } = usePrivacy();
@@ -1149,10 +1159,10 @@ onUnmounted(() => {
 }
 
 .power-tag {
-  color: var(--mi-orange);
+  color: var(--mi-accent-text-on-soft);
   font-weight: 700;
   font-size: 12px;
-  background: rgba(255, 103, 0, 0.08);
+  background: var(--mi-accent-soft);
   padding: 3px 8px;
   border-radius: 6px;
 }
@@ -1177,8 +1187,8 @@ onUnmounted(() => {
 }
 
 .notify-item {
-  background: #1e293b;
-  color: #f8fafc;
+  background: var(--mi-card-sub-bg);
+  color: var(--mi-text-main);
   font-size: 12px;
   font-weight: 600;
   padding: 10px 16px;
@@ -1191,8 +1201,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--mi-card-sub-bg);
+  border: 1px solid var(--mi-border);
   padding: 14px 20px;
   border-radius: var(--mi-radius-md);
   margin-bottom: 24px;
@@ -1216,17 +1226,17 @@ onUnmounted(() => {
 
 .banner-text strong {
   font-size: 14px;
-  color: #1e293b;
+  color: var(--mi-text-main);
 }
 
 .banner-text span {
   font-size: 12px;
-  color: #64748b;
+  color: var(--mi-text-sub);
 }
 
 .retry-btn {
   background: var(--mi-orange);
-  color: white;
+  color: var(--mi-on-accent);
   padding: 6px 16px;
   border-radius: 8px;
   font-size: 12px;
@@ -1252,15 +1262,15 @@ onUnmounted(() => {
 
 .gazette-flag {
   display: inline-block;
-  background: #d92027;
-  color: #ffffff;
+  background: var(--mi-construct-red);
+  color: var(--mi-on-construct-red);
   font-family: Impact, "Arial Black", sans-serif;
   font-size: 13px;
   letter-spacing: 2px;
   padding: 4px 12px;
   width: fit-content;
-  border: 2px solid #0a0a0a;
-  box-shadow: 3px 3px 0px #0a0a0a;
+  border: 2px solid var(--mi-construct-ink);
+  box-shadow: 3px 3px 0px var(--mi-construct-ink);
   transform: rotate(-1deg);
 }
 
@@ -1268,19 +1278,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
-  border-top: 4px solid #0a0a0a;
-  border-bottom: 2px solid #0a0a0a;
+  border-top: 4px solid var(--mi-construct-ink);
+  border-bottom: 2px solid var(--mi-construct-ink);
   padding: 10px 0;
-  background: #f4f1ea;
-  border-left: 8px solid #0a0a0a;
-  border-right: 8px solid #0a0a0a;
+  background: var(--mi-card-bg);
+  border-left: 8px solid var(--mi-construct-ink);
+  border-right: 8px solid var(--mi-construct-ink);
   padding-left: 14px;
   padding-right: 14px;
 }
 
 .gazette-stamp {
-  background: #0a0a0a;
-  color: #f4f1ea;
+  background: var(--mi-construct-ink);
+  color: var(--mi-card-bg);
   font-family: Impact, "Arial Black", sans-serif;
   font-size: 16px;
   padding: 4px 8px;
@@ -1291,7 +1301,7 @@ onUnmounted(() => {
   font-family: Impact, "Franklin Gothic Heavy", "Arial Black", sans-serif;
   font-size: 24px;
   letter-spacing: 1px;
-  color: #0a0a0a;
+  color: var(--mi-text-main);
   text-transform: uppercase;
   flex: 1;
 }
@@ -1299,7 +1309,7 @@ onUnmounted(() => {
 .gazette-slogan {
   font-family: Impact, "Arial Black", sans-serif;
   font-size: 14px;
-  color: #d92027;
+  color: var(--mi-status-red);
   letter-spacing: 1px;
 }
 
@@ -1309,9 +1319,9 @@ onUnmounted(() => {
   font-family: monospace;
   font-size: 11px;
   font-weight: 700;
-  color: #0a0a0a;
-  background: #f4f1ea;
-  border: 2px solid #0a0a0a;
+  color: var(--mi-text-main);
+  background: var(--mi-card-bg);
+  border: 2px solid var(--mi-construct-ink);
   padding: 4px 12px;
   border-top: none;
 }
@@ -1337,7 +1347,7 @@ onUnmounted(() => {
 
 .app-footer {
   border-top: 1px solid var(--mi-border);
-  background: #ffffff;
+  background: var(--mi-card-bg);
   padding: 16px 32px;
   margin-top: auto;
 }
@@ -1357,12 +1367,12 @@ onUnmounted(() => {
 }
 
 .text-green {
-  color: #10b981;
+  color: var(--mi-status-green);
   font-weight: 600;
 }
 
 .text-orange {
-  color: #f97316;
+  color: var(--mi-status-orange);
   font-weight: 600;
 }
 
@@ -1443,9 +1453,9 @@ onUnmounted(() => {
 .unavailable-note {
   font-size: 12px;
   line-height: 1.7;
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--mi-status-orange);
+  background: var(--mi-status-orange-soft);
+  border: 1px solid var(--mi-status-orange-soft);
   border-radius: var(--mi-radius-md);
   padding: 12px 16px;
 }
@@ -1461,7 +1471,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-md);
   border: 1px solid var(--mi-border);
 }
@@ -1495,7 +1505,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-md);
   margin-bottom: 8px;
   border: 1px solid var(--mi-border);
@@ -1527,18 +1537,24 @@ onUnmounted(() => {
   align-items: center;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   font-size: 12px;
   text-align: left;
   transition: all 0.15s;
 }
 
-.album-item:hover { background: #f1f5f9; }
-.album-item.active { background: #fff7ed; border-color: var(--mi-orange); color: var(--mi-orange); font-weight: 600; }
+.album-item:hover { background: var(--mi-control-sub-bg); }
+/* 选中态用强调色淡底 + 强调色文字，浅深主题下都能保持对比度 */
+.album-item.active {
+  background: var(--mi-accent-soft);
+  border-color: var(--mi-orange);
+  color: var(--mi-orange);
+  font-weight: 600;
+}
 
 .album-item .a-name { font-weight: 600; }
-.album-item .a-count { font-size: 10px; color: #94a3b8; }
+.album-item .a-count { font-size: 10px; color: var(--mi-text-sub); }
 
 .album-photos { overflow-y: auto; max-height: 50vh; }
 
@@ -1552,7 +1568,7 @@ onUnmounted(() => {
   aspect-ratio: 1;
   border-radius: 8px;
   overflow: hidden;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   cursor: pointer;
   border: 1px solid var(--mi-border);
 }
@@ -1568,7 +1584,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 14px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-md);
   border: 1px solid var(--mi-border);
   font-size: 13px;
@@ -1586,7 +1602,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-md);
   margin-bottom: 10px;
   border: 1px solid var(--mi-border);
@@ -1613,12 +1629,12 @@ onUnmounted(() => {
   font-weight: 600;
   padding: 4px 10px;
   border-radius: 8px;
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--mi-status-green-soft);
+  color: var(--mi-status-green);
 }
 
 .task-card {
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   border-radius: var(--mi-radius-md);
   padding: 14px;
@@ -1637,14 +1653,14 @@ onUnmounted(() => {
   font-weight: 600;
   padding: 5px 14px;
   border-radius: 14px;
-  background: #f1f5f9;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-sub);
   transition: all 0.2s;
 }
 
 .task-tab.active {
   background: var(--mi-orange);
-  color: #fff;
+  color: var(--mi-on-accent);
 }
 
 .task-refresh {
@@ -1655,7 +1671,7 @@ onUnmounted(() => {
   border-radius: 14px;
   border: 1px solid var(--mi-border);
   color: var(--mi-text-sub);
-  background: #fff;
+  background: var(--mi-card-bg);
 }
 
 .task-refresh:disabled {
@@ -1667,7 +1683,7 @@ onUnmounted(() => {
   gap: 16px;
   font-size: 12px;
   color: var(--mi-text-sub);
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   border-radius: var(--mi-radius-md);
   padding: 10px 14px;
@@ -1716,7 +1732,7 @@ onUnmounted(() => {
 }
 
 .text-red {
-  color: #dc2626;
+  color: var(--mi-status-red);
 }
 
 .text-orange {
@@ -1737,7 +1753,7 @@ onUnmounted(() => {
 
 .t-prog {
   height: 6px;
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -1771,7 +1787,7 @@ onUnmounted(() => {
 .media-viewer-box {
   width: 80vw;
   max-width: 1080px;
-  background: #1e293b;
+  background: var(--mi-card-sub-bg);
   border-radius: var(--mi-radius-lg);
   overflow: hidden;
   display: flex;
@@ -1801,7 +1817,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  background: #0f172a;
+  background: var(--mi-bg);
   color: white;
 }
 
@@ -1816,7 +1832,7 @@ onUnmounted(() => {
 
 .tb-btn {
   background: transparent;
-  color: #e2e8f0;
+  color: var(--mi-text-main);
   border: none;
   font-size: 14px;
   font-weight: 700;
@@ -1834,7 +1850,7 @@ onUnmounted(() => {
 .zoom-text {
   font-size: 11px;
   font-family: monospace;
-  color: #ff8533;
+  color: var(--mi-accent-text);
   min-width: 40px;
   text-align: center;
 }
@@ -1849,7 +1865,7 @@ onUnmounted(() => {
 
 .close-viewer {
   font-size: 16px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
 }
 
 .close-viewer:hover {
@@ -1887,7 +1903,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
-  background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%);
+  background: radial-gradient(circle at center, #1e1b4b 0%, var(--mi-bg) 100%);
   border-radius: var(--mi-radius-md);
   color: white;
   text-align: center;
@@ -1910,13 +1926,13 @@ onUnmounted(() => {
 
 .heic-preview-box p {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   margin-bottom: 6px;
 }
 
 .heic-tip {
   font-size: 12px;
-  color: #64748b;
+  color: var(--mi-text-sub);
   max-width: 420px;
   margin-bottom: 20px !important;
 }
@@ -1951,8 +1967,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   padding: 12px 20px;
-  background: #0f172a;
-  color: #94a3b8;
+  background: var(--mi-bg);
+  color: var(--mi-text-sub);
   font-size: 12px;
 }
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="storage-card">
+  <div class="storage-card mi-surface" style="--mi-surface-label: '№ 01'">
     <div class="card-header">
       <div class="header-title">
         <span class="icon">💾</span>
@@ -199,8 +199,8 @@ function formatHours(h) {
 
 .pool-tag {
   font-size: 12px;
-  color: #047857;
-  background: #ecfdf5;
+  color: var(--mi-status-green);
+  background: var(--mi-status-green-soft);
   padding: 4px 10px;
   border-radius: 10px;
   font-weight: 600;
@@ -242,7 +242,7 @@ function formatHours(h) {
 
 .progress-bar {
   height: 10px;
-  background: var(--mi-control-sub-bg, #eaedf1);
+  background: var(--mi-control-sub-bg);
   border-radius: 5px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -250,7 +250,7 @@ function formatHours(h) {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ff6700 0%, #ff8533 100%);
+  background: linear-gradient(90deg, var(--mi-orange) 0%, var(--mi-orange) 100%);
   border-radius: 5px;
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -270,7 +270,7 @@ function formatHours(h) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  background: var(--mi-card-sub-bg, #f8fafc);
+  background: var(--mi-card-sub-bg);
   padding: 14px;
   border-radius: var(--mi-radius-md);
   border: 1px solid var(--mi-border);
@@ -294,15 +294,15 @@ function formatHours(h) {
 }
 
 .text-green {
-  color: #10b981;
+  color: var(--mi-status-green);
 }
 
 .text-warn {
-  color: #dc2626;
+  color: var(--mi-status-red);
 }
 
 .text-caution {
-  color: #d97706;
+  color: var(--mi-status-orange);
 }
 
 .text-muted {
@@ -318,7 +318,7 @@ function formatHours(h) {
 }
 
 .disk-row {
-  background: var(--mi-card-sub-bg, #f8fafc);
+  background: var(--mi-card-sub-bg);
   border: 1px solid var(--mi-border);
   border-radius: var(--mi-radius-md);
   padding: 10px 12px;
@@ -334,7 +334,7 @@ function formatHours(h) {
 .disk-slot {
   font-size: 11px;
   font-weight: 700;
-  color: var(--mi-orange);
+  color: var(--mi-accent-text);
 }
 
 .disk-dev {
@@ -351,13 +351,13 @@ function formatHours(h) {
 }
 
 .disk-health.ok {
-  color: #047857;
-  background: #ecfdf5;
+  color: var(--mi-status-green);
+  background: var(--mi-status-green-soft);
 }
 
 .disk-health.warn {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--mi-status-red);
+  background: var(--mi-status-red-soft);
 }
 
 .disk-model {
@@ -398,9 +398,9 @@ function formatHours(h) {
   display: inline-block;
   margin-left: 6px;
   font-size: 10px;
-  color: #d97706;
-  background: rgba(217, 119, 6, 0.12);
-  border: 1px solid rgba(217, 119, 6, 0.25);
+  color: var(--mi-status-orange);
+  background: var(--mi-status-orange-soft);
+  border: 1px solid var(--mi-status-orange-soft);
   border-radius: 8px;
   padding: 1px 6px;
 }
@@ -409,9 +409,9 @@ function formatHours(h) {
   display: inline-block;
   margin-left: 6px;
   font-size: 10px;
-  color: #0284c7;
-  background: rgba(2, 132, 199, 0.12);
-  border: 1px solid rgba(2, 132, 199, 0.25);
+  color: var(--mi-status-cyan);
+  background: var(--mi-status-cyan-soft);
+  border: 1px solid var(--mi-status-cyan-soft);
   border-radius: 8px;
   padding: 1px 6px;
 }

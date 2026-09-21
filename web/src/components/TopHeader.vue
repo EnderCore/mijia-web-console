@@ -1,5 +1,5 @@
 <template>
-  <header class="top-header">
+  <header class="top-header mi-surface">
     <div class="header-left">
       <div class="logo-box">
         <svg viewBox="0 0 100 100" class="mi-icon">
@@ -43,6 +43,12 @@
         <span>外观</span>
       </button>
 
+      <!-- 本地缓存管理入口 -->
+      <button class="cache-nav-btn" @click="$emit('open-cache')" title="查看与清理浏览器本地缓存">
+        <span class="btn-icon">💾</span>
+        <span>缓存</span>
+      </button>
+
       <div class="stat-pill" v-if="urlPort">
         <span class="label">内网映射</span>
         <span class="val">127.0.0.1:{{ urlPort }}</span>
@@ -67,7 +73,7 @@ defineProps({
   loading: { type: Boolean, default: false }
 });
 
-defineEmits(['refresh', 'open-explorer', 'open-theme']);
+defineEmits(['refresh', 'open-explorer', 'open-theme', 'open-cache']);
 
 const { masked, toggle } = usePrivacy();
 
@@ -82,8 +88,8 @@ function mask(v, kind) {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #ff6700, #ff8533);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--mi-orange), var(--mi-orange-hover));
+  color: var(--mi-on-accent);
   padding: 8px 16px;
   border-radius: 20px;
   font-size: 13px;
@@ -113,6 +119,27 @@ function mask(v, kind) {
   transform: translateY(-1px);
 }
 
+.cache-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--mi-card-bg);
+  border: 1px solid var(--mi-border);
+  color: var(--mi-text-main);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s;
+}
+
+.cache-nav-btn:hover {
+  border-color: var(--mi-orange);
+  color: var(--mi-orange);
+  transform: translateY(-1px);
+}
+
 .mask-btn {
   display: flex;
   align-items: center;
@@ -121,22 +148,22 @@ function mask(v, kind) {
   border-radius: 20px;
   font-size: 13px;
   font-weight: 600;
-  background: #f5f6f8;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-sub);
   border: 1px solid transparent;
   transition: all 0.2s;
 }
 
 .mask-btn:hover {
-  background: #eaedf1;
+  background: var(--mi-control-bg);
   color: var(--mi-text-main);
 }
 
 /* 开启脱敏时用醒目色，避免用户忘了自己开着遮罩 */
 .mask-btn.active {
-  background: #fff7ed;
-  border-color: #fdba74;
-  color: #c2410c;
+  background: var(--mi-status-red-soft);
+  border-color: var(--mi-status-red-soft);
+  color: var(--mi-status-red);
 }
 
 .explorer-nav-btn:hover {
@@ -152,7 +179,7 @@ function mask(v, kind) {
   justify-content: space-between;
   align-items: center;
   padding: 24px 32px;
-  background: #ffffff;
+  background: var(--mi-card-bg);
   border-bottom: 1px solid var(--mi-border);
   position: sticky;
   top: 0;
@@ -200,20 +227,20 @@ function mask(v, kind) {
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
-  background: #f0f2f5;
+  background: var(--mi-control-sub-bg);
   color: var(--mi-text-sub);
 }
 
 .online-badge.online {
-  background: #e8f8f0;
-  color: #10b981;
+  background: var(--mi-status-green-soft);
+  color: var(--mi-status-green);
 }
 
 .pulse-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #cbd5e1;
+  background: var(--mi-text-sub);
 }
 
 .online-badge.online .pulse-dot {
@@ -237,7 +264,7 @@ function mask(v, kind) {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #f5f6f8;
+  background: var(--mi-control-sub-bg);
   padding: 6px 14px;
   border-radius: 20px;
   font-size: 12px;
@@ -257,7 +284,7 @@ function mask(v, kind) {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: #f5f6f8;
+  background: var(--mi-control-sub-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -266,7 +293,7 @@ function mask(v, kind) {
 }
 
 .refresh-btn:hover {
-  background: #eaedf1;
+  background: var(--mi-control-bg);
   color: var(--mi-orange);
 }
 

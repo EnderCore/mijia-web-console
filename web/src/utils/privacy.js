@@ -15,12 +15,19 @@ import { ref } from 'vue';
 
 const STORAGE_KEY = 'mijia_privacy_mask';
 
-// 初始值从 localStorage 读取；SSR 或隐私模式下 localStorage 不可用时退回 false
+// 初始值从 localStorage 读取；SSR 或隐私模式下 localStorage 不可用时退回 true。
+//
+// 默认开启：设备标识（DID / 序列号 / UID / IP / MAC / 路径）在截图分享时
+// 极易外泄，而「忘了点脱敏」的代价远大于「多按一次才能看到真实值」。
+// 只有用户显式关过（存了 '0'）才保持关闭 —— 所以需要区分「从未设置」和
+// 「设置为关闭」，不能简单用 `=== '1'` 判断（那样默认是关的）。
 function readInitial() {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1';
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v === null) return true;
+    return v === '1';
   } catch (e) {
-    return false;
+    return true;
   }
 }
 

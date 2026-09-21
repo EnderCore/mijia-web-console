@@ -13,7 +13,40 @@
   --mi-backdrop-blur: none;
   --mi-backdrop-saturate: 100%;
   --mi-text-main: #1f2329;
-  --mi-text-sub: #8f959e;
+  --mi-text-sub: #64748b;
+  --mi-control-text: #1f2329;
+  --mi-control-text-sub: #64748b;
+  --mi-on-accent: #ffffff;
+  --mi-accent-soft: rgba(255, 103, 0, 0.12);
+  --mi-danger-solid: #b91c1c;
+  --mi-on-danger-solid: #ffffff;
+  --mi-control-bg-glass: rgba(255, 255, 255, 0.72);
+  --mi-control-border-glass: rgba(255, 255, 255, 0.7);
+
+  /* 视频播放器令牌（运行时由 theme/tokens.js 覆写）。
+     外壳跟随主题；控制条遮罩固定深色，因为视频画面内容不可预知。 */
+  --mi-player-shell-bg: #ffffff;
+  --mi-player-shell-text: #1f2329;
+  --mi-player-shell-text-sub: #64748b;
+  --mi-player-scrim: rgba(10, 14, 24, 0.88);
+  --mi-player-scrim-text: #ffffff;
+  --mi-player-scrim-text-dim: rgba(255, 255, 255, 0.75);
+  --mi-player-accent: #ff6700;
+
+  /* 语义状态色（浅色底默认用深一档，theme.js 会按实际亮度覆写） */
+  --mi-status-green: #047857;
+  --mi-status-red: #b91c1c;
+  --mi-status-orange: #b45309;
+  --mi-status-blue: #1d4ed8;
+  --mi-status-cyan: #0369a1;
+  --mi-status-violet: #6d28d9;
+  --mi-status-green-soft: rgba(4, 120, 87, 0.10);
+  --mi-status-red-soft: rgba(185, 28, 28, 0.10);
+  --mi-status-orange-soft: rgba(180, 83, 9, 0.12);
+  --mi-status-blue-soft: rgba(29, 78, 216, 0.10);
+  --mi-status-cyan-soft: rgba(3, 105, 161, 0.10);
+  --mi-status-violet-soft: rgba(109, 40, 217, 0.10);
+
   --mi-border: #eaedf1;
   --mi-radius-lg: 20px;
   --mi-radius-md: 14px;
@@ -28,31 +61,52 @@
   --mi-bg-tint: rgba(245, 246, 248, 0.6);
 }
 
-/* 全局暗色调系统适配 (Dark Mode System) */
-html.dark {
-  --mi-bg: #0b0f19 !important;
-  --mi-card-bg: #151d2f !important;
-  --mi-card-sub-bg: #1e293b !important;
-  --mi-control-bg: #1e293b !important;
-  --mi-control-sub-bg: #283548 !important;
-  --mi-text-main: #f1f5f9 !important;
-  --mi-text-sub: #94a3b8 !important;
-  --mi-border: #283548 !important;
-  --mi-card-border: #283548 !important;
-  --mi-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-  --mi-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
-  --mi-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+/* 暗色模式：颜色令牌不再在此写死。
+   早期这里用 !important 强行覆盖了 --mi-bg / --mi-card-bg / --mi-text-main 等，
+   结果与 theme/tokens.js 注入的值相互打架 —— 引擎按主题推导出的值被这组
+   固定值盖掉，导致「换了主题但颜色没跟着变」。
+   现在所有颜色令牌由引擎统一负责，CSS 只消费不改写。 */
+html.dark body {
+  background-color: var(--mi-bg);
+  color: var(--mi-text-main);
 }
 
-html.dark body {
-  background-color: #0b0f19 !important;
-  color: #f1f5f9 !important;
+/* ==========================================================================
+   卡片容器声明协议 —— .mi-surface
+   --------------------------------------------------------------------------
+   背景：磨砂与卡片样式过去靠一份**硬编码的类名清单**来施加，例如：
+
+     html.theme-mica-all-containers .top-header,
+     html.theme-mica-all-containers .storage-card,
+     html.theme-mica-all-containers .chart-card,   ← 组件里根本没有这个类
+     html.theme-mica-all-containers .grid-card,    ← 也没有
+     html.theme-mica-all-containers .recent-card,  ← 实际叫 recent-media-card
+     ...
+
+   这类清单有两个必然的失效方式：
+     1. 组件改了类名（chart-card → monitor-card），清单不会跟着变，静默失效；
+     2. 新增卡片时忘了回来补名字，同样静默失效。
+   实际后果就是「全局卡片磨砂只有一个卡片生效，其余仍是半透明」。
+
+   现在改为**声明式**：组件自己给卡片容器加上 .mi-surface，
+   CSS 只认这一个类。新增卡片时是「加了类就有磨砂」，
+   而不是「忘了改 style.css 就没效果」。
+   —— 把容易漏的远端清单，换成近处的显式声明。
+   ========================================================================== */
+
+/* 组件通过 --mi-surface-label 声明构成主义主题下的编号角标，例如
+   style="--mi-surface-label: '№ 01'"；未声明则不生成角标。 */
+.mi-surface {
+  /* 占位类：具体样式由各主题（云母 / 构成主义等）按模式施加 */
 }
+
+/* ==========================================================================
+   暗色模式全域穿透覆盖
+   ========================================================================== */
 
 /* 强制暗化所有卡片、容器、文件管理器、弹窗与各级列表项 (全域穿透覆盖) */
-html.dark .top-header,
+html.dark .mi-surface,
 html.dark .app-footer,
-html.dark .custom-modal,
 html.dark .modal-hdr,
 html.dark .modal-cnt,
 html.dark .explorer-modal,
@@ -100,7 +154,11 @@ html.dark .upload-bar,
 html.dark .viewer-box,
 html.dark .doc-viewer-modal,
 html.dark .doc-sidebar,
-html.dark .doc-content {
+html.dark .doc-content,
+html.dark .theme-modal-v2,
+html.dark .modal-hdr-v2,
+html.dark .section-card,
+html.dark .preset-item-card {
   background-color: var(--mi-card-bg) !important;
   border-color: var(--mi-border) !important;
   color: var(--mi-text-main) !important;
@@ -138,66 +196,85 @@ html.dark .hw-item,
 html.dark .disk-row,
 html.dark .details-grid,
 html.dark .tunnel-info,
-html.dark .icon-wrapper {
+html.dark .icon-wrapper,
+html.dark .theme-nav-tabs,
+html.dark .modal-ftr-v2,
+html.dark .preview-mini-stage,
+html.dark .mode-card,
+html.dark .scope-card,
+html.dark .backup-action-card,
+html.dark .upload-area-box,
+html.dark .pill-btn,
+html.dark .btn-ghost,
+html.dark .small-action-btn {
   background-color: var(--mi-card-sub-bg) !important;
   border-color: var(--mi-border) !important;
 }
 
-/* 全局各类状态标签药丸深度暗化 */
-html.dark .pool-tag {
-  background: rgba(16, 185, 129, 0.15) !important;
-  color: #34d399 !important;
-  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+/* 全局各类状态标签药丸。颜色取自语义状态变量，浅底用深色字、深底用亮色字，
+   由 theme.js 依据实际底盘亮度统一写入，浅色云母等彩色主题也不会出现浅字配浅底。 */
+.pool-tag,
+.disk-health.ok {
+  background: var(--mi-status-green-soft) !important;
+  color: var(--mi-status-green) !important;
+  border: 1px solid var(--mi-status-green-soft) !important;
 }
 
-html.dark .ping-badge.text-green {
-  background: rgba(16, 185, 129, 0.15) !important;
-  color: #34d399 !important;
+.ping-badge.text-green,
+.badge.running,
+.online-badge.online {
+  background: var(--mi-status-green-soft) !important;
+  color: var(--mi-status-green) !important;
 }
 
-html.dark .ping-badge.text-yellow {
-  background: rgba(245, 158, 11, 0.15) !important;
-  color: #fbbf24 !important;
+.ping-badge.text-yellow,
+.estim-tag {
+  background: var(--mi-status-orange-soft) !important;
+  color: var(--mi-status-orange) !important;
+  border: 1px solid var(--mi-status-orange-soft) !important;
 }
 
-html.dark .disk-health.ok {
-  background: rgba(16, 185, 129, 0.15) !important;
-  color: #34d399 !important;
+.ping-badge.text-red,
+.disk-health.warn {
+  background: var(--mi-status-red-soft) !important;
+  color: var(--mi-status-red) !important;
 }
 
-html.dark .disk-health.warn {
-  background: rgba(239, 68, 68, 0.15) !important;
-  color: #f87171 !important;
+.badge.web {
+  background: var(--mi-status-blue-soft) !important;
+  color: var(--mi-status-blue) !important;
+  border: 1px solid var(--mi-status-blue-soft) !important;
 }
 
-html.dark .badge.web {
-  background: rgba(59, 130, 246, 0.15) !important;
-  color: #60a5fa !important;
-  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+.personal-tag {
+  background: var(--mi-status-cyan-soft) !important;
+  color: var(--mi-status-cyan) !important;
+  border: 1px solid var(--mi-status-cyan-soft) !important;
 }
 
-html.dark .badge.running {
-  background: rgba(16, 185, 129, 0.15) !important;
-  color: #34d399 !important;
-  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+/* 纯文本状态类（页脚、硬件读数等）只改字色，不铺底色 */
+.text-green {
+  color: var(--mi-status-green) !important;
 }
 
-html.dark .badge.uninstalled {
-  background: rgba(255, 255, 255, 0.06) !important;
-  color: #94a3b8 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+.text-red {
+  color: var(--mi-status-red) !important;
 }
 
-html.dark .personal-tag {
-  background: rgba(14, 165, 233, 0.15) !important;
-  color: #38bdf8 !important;
-  border: 1px solid rgba(14, 165, 233, 0.3) !important;
+.text-orange {
+  color: var(--mi-status-orange) !important;
 }
 
-html.dark .estim-tag {
-  background: rgba(245, 158, 11, 0.15) !important;
-  color: #fbbf24 !important;
-  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+/* 以强调色书写文字的通用类：使用亮度调校过的可读强调字色 */
+.accent-text {
+  color: var(--mi-accent-text) !important;
+}
+
+/* 未安装等中性灰徽章：底与字都跟随主题中性色 */
+.badge.uninstalled {
+  background: var(--mi-control-sub-bg) !important;
+  color: var(--mi-text-sub) !important;
+  border: 1px solid var(--mi-border) !important;
 }
 
 /* 文本高对比度保护 */
@@ -258,7 +335,7 @@ html.dark .tree-node-item.active,
 html.dark .tree-item.active,
 html.dark .album-item.active {
   background-color: var(--mi-orange) !important;
-  color: #ffffff !important;
+  color: var(--mi-on-accent) !important;
 }
 
 html.dark .load-more-btn {
@@ -272,33 +349,29 @@ html.dark .load-more-btn:hover {
   color: var(--mi-orange) !important;
 }
 
-/* 云母与亚克力玻璃拟态主题 (Mica Glassmorphism) */
-html.theme-mica {
-  --mi-text-main: #0f172a;
-  --mi-text-sub: #475569;
-}
+/* 云母与亚克力玻璃拟态主题 (Mica Glassmorphism)
+   该主题的玻璃质感由「表面 / 模糊 / 描边」类规则表达；
+   前景色不再在此按 dark 类硬分支 —— 引擎会按实际合成底色推导，
+   浅色玻璃自动配深字、深色玻璃自动配浅字。 */
 
-/* 模式 1：仅按钮和控件磨砂（核心推荐：大容器高透，壁纸清晰，控件磨砂发光） */
-html.theme-mica-controls-only .top-header,
-html.theme-mica-controls-only .storage-card,
-html.theme-mica-controls-only .chart-card,
-html.theme-mica-controls-only .grid-card,
-html.theme-mica-controls-only .recent-card,
-html.theme-mica-controls-only .app-footer,
-html.theme-mica-controls-only .custom-modal,
-html.theme-mica-controls-only .explorer-modal {
+/* 模式 1：仅按钮和控件磨砂（核心推荐：大容器高透，壁纸清晰，控件磨砂发光）
+   —— 大容器（.mi-surface）不模糊，让壁纸完整高清透出。 */
+html.theme-mica-controls-only .mi-surface {
   background: var(--mi-card-bg) !important;
-  backdrop-filter: none !important; /* 不模糊大容器，让壁纸高清通透 */
+  backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border: 1px solid var(--mi-card-border) !important;
   box-shadow: var(--mi-card-shadow) !important;
 }
 
-/* 控件、按钮、标签、输入框单独施加精致的磨砂毛玻璃 */
+/* 控件、按钮、标签、输入框单独施加精致的磨砂毛玻璃。
+   底色与文字色全部由 theme.js 按实际合成亮度写入变量，
+   浅色玻璃配深字、深色玻璃配浅字，不再按 dark 类硬分支。 */
 html.theme-mica-controls-only button,
 html.theme-mica-controls-only .tab-btn,
 html.theme-mica-controls-only .mask-btn,
 html.theme-mica-controls-only .theme-nav-btn,
+html.theme-mica-controls-only .cache-nav-btn,
 html.theme-mica-controls-only .explorer-nav-btn,
 html.theme-mica-controls-only .refresh-btn,
 html.theme-mica-controls-only .stat-pill,
@@ -309,29 +382,132 @@ html.theme-mica-controls-only .file-card,
 html.theme-mica-controls-only .card-actions,
 html.theme-mica-controls-only .io-btn,
 html.theme-mica-controls-only .action-btn,
-html.theme-mica-controls-only .preset-card {
-  background: rgba(255, 255, 255, var(--mi-control-opacity, 0.65)) !important;
+html.theme-mica-controls-only .action-pill,
+html.theme-mica-controls-only .preset-card,
+html.theme-mica-controls-only .mode-card,
+html.theme-mica-controls-only .preset-item-card,
+html.theme-mica-controls-only .scope-card,
+html.theme-mica-controls-only .backup-action-card,
+html.theme-mica-controls-only .theme-tab-btn,
+html.theme-mica-controls-only .pill-btn,
+html.theme-mica-controls-only .btn-ghost,
+html.theme-mica-controls-only .small-action-btn,
+html.theme-mica-controls-only .ca-btn,
+html.theme-mica-controls-only .row-op,
+html.theme-mica-controls-only .up-btn,
+html.theme-mica-controls-only .view-toggle,
+html.theme-mica-controls-only .load-more-btn,
+html.theme-mica-controls-only .task-tab,
+html.theme-mica-controls-only .task-refresh {
+  background: var(--mi-control-bg-glass, rgba(255, 255, 255, 0.72)) !important;
   backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
   -webkit-backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--mi-control-border-glass, rgba(255, 255, 255, 0.6)) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+  color: var(--mi-control-text, #0f172a) !important;
 }
 
-html.theme-mica-controls-only .explorer-nav-btn {
-  background: linear-gradient(135deg, rgba(255, 103, 0, 0.85), rgba(255, 133, 51, 0.85)) !important;
-  backdrop-filter: blur(var(--mi-control-blur, 16px)) !important;
-  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+/* 磨砂层内的文字后代统一继承玻璃层文字色，防止个别组件写死颜色后又不可读 */
+html.theme-mica-controls-only button > *,
+html.theme-mica-controls-only .tab-btn > *,
+html.theme-mica-controls-only .mask-btn > *,
+html.theme-mica-controls-only .theme-nav-btn > *,
+html.theme-mica-controls-only .cache-nav-btn > *,
+html.theme-mica-controls-only .refresh-btn > *,
+html.theme-mica-controls-only .stat-pill > *,
+html.theme-mica-controls-only .app-item > *,
+html.theme-mica-controls-only .media-item > *,
+html.theme-mica-controls-only .file-card > *,
+html.theme-mica-controls-only .io-btn > *,
+html.theme-mica-controls-only .action-btn > *,
+html.theme-mica-controls-only .action-pill > *,
+html.theme-mica-controls-only .preset-card > *,
+html.theme-mica-controls-only .mode-card > *,
+html.theme-mica-controls-only .preset-item-card > *,
+html.theme-mica-controls-only .scope-card > *,
+html.theme-mica-controls-only .backup-action-card > *,
+html.theme-mica-controls-only .theme-tab-btn > *,
+html.theme-mica-controls-only .pill-btn > *,
+html.theme-mica-controls-only .btn-ghost > *,
+html.theme-mica-controls-only .small-action-btn > *,
+html.theme-mica-controls-only .ca-btn > *,
+html.theme-mica-controls-only .row-op > *,
+html.theme-mica-controls-only .up-btn > *,
+html.theme-mica-controls-only .view-toggle > *,
+html.theme-mica-controls-only .load-more-btn > *,
+html.theme-mica-controls-only .task-tab > *,
+html.theme-mica-controls-only .task-refresh > * {
+  color: inherit !important;
 }
 
-/* 模式 2：全部容器全局磨砂 */
-html.theme-mica-all-containers .top-header,
-html.theme-mica-all-containers .storage-card,
-html.theme-mica-all-containers .chart-card,
-html.theme-mica-all-containers .grid-card,
-html.theme-mica-all-containers .recent-card,
-html.theme-mica-all-containers .app-footer,
-html.theme-mica-all-containers .custom-modal,
-html.theme-mica-all-containers .explorer-modal {
+/* 次级说明文字（描述、副标题、未选中态标签）使用调校过的次级色 */
+html.theme-mica-controls-only .mode-desc,
+html.theme-mica-controls-only .preset-expl,
+html.theme-mica-controls-only .scope-desc,
+html.theme-mica-controls-only .action-card-info span,
+html.theme-mica-controls-only .stat-pill .label,
+html.theme-mica-controls-only .thumb-tip {
+  color: var(--mi-control-text-sub, #475569) !important;
+}
+
+html.theme-mica-controls-only .stat-pill .val {
+  color: var(--mi-control-text, #0f172a) !important;
+}
+
+/* 实心强调色按钮。
+   注意两点：
+    1) 必须同时指定「底色」和「文字色」，两者都由引擎配套推导
+       （--mi-orange 与 --mi-on-accent 是成对生成的）。
+    2) 这些元素同时也是 button，会被上面的磨砂玻璃规则命中而套上玻璃底色；
+       若只覆盖文字色，就会出现「深色玻璃底 + 深色墨字」（深色云母下的按钮看不清）。
+       所以这里显式把底色改回实心强调色。 */
+html.theme-mica-controls-only .explorer-nav-btn,
+html.theme-mica-controls-only .btn-primary,
+html.theme-mica-controls-only .pill-btn.primary,
+html.theme-mica-controls-only .upload-pill,
+html.theme-mica-controls-only .retry-btn,
+html.theme-mica-controls-only .tab-btn.active,
+html.theme-mica-controls-only .task-tab.active,
+html.theme-mica-controls-only .column-item.active,
+html.theme-mica-controls-only .tree-item.active,
+html.theme-mica-controls-only .tree-node-item.active {
+  background: var(--mi-orange) !important;
+  color: var(--mi-on-accent) !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 危险操作按钮不能被磨砂规则刷成浅色玻璃，
+   否则「清空缓存」这类按钮会失去红色的危险暗示。
+   底色/文字由引擎配套求解（--mi-danger-solid / --mi-on-danger-solid）。 */
+html.theme-mica-controls-only .danger-btn {
+  background: var(--mi-danger-solid) !important;
+  color: var(--mi-on-danger-solid) !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.theme-mica-controls-only .explorer-nav-btn,
+html.theme-mica-controls-only .upload-pill,
+html.theme-mica-controls-only .btn-primary,
+html.theme-mica-controls-only .pill-btn.primary {
+  background: linear-gradient(135deg, var(--mi-orange), var(--mi-orange-hover)) !important;
+}
+
+html.theme-mica-controls-only .explorer-nav-btn *,
+html.theme-mica-controls-only .btn-primary *,
+html.theme-mica-controls-only .pill-btn.primary *,
+html.theme-mica-controls-only .upload-pill *,
+html.theme-mica-controls-only .retry-btn *,
+html.theme-mica-controls-only .tab-btn.active *,
+html.theme-mica-controls-only .task-tab.active * {
+  color: var(--mi-on-accent) !important;
+}
+
+/* 模式 2：全部容器全局磨砂 —— 大容器（.mi-surface）整体施加深邃高斯模糊 */
+html.theme-mica-all-containers .mi-surface {
   background: var(--mi-card-bg) !important;
   backdrop-filter: blur(var(--mi-backdrop-blur, 18px)) saturate(var(--mi-backdrop-saturate, 180%)) !important;
   -webkit-backdrop-filter: blur(var(--mi-backdrop-blur, 18px)) saturate(var(--mi-backdrop-saturate, 180%)) !important;
@@ -339,24 +515,21 @@ html.theme-mica-all-containers .explorer-modal {
   box-shadow: var(--mi-card-shadow) !important;
 }
 
-/* 构成主义先锋艺术视觉体系 (Constructivism UI) */
+/* 构成主义先锋艺术视觉体系 (Constructivism UI)
+   仅保留形状与排版的风格化处理：颜色一律不再在此写死，
+   全部交由 theme/tokens.js 按「主题 + 深浅模式」推导。
+   早期这里用 !important 锁死了浅色纸底与黑色描边，
+   导致「构成主义 + 深色模式」出现深底黑字，故移除颜色声明。 */
 html.theme-constructivism {
-  --mi-bg: #e8e4d9 !important;
-  --mi-radius-lg: 0px !important;
-  --mi-radius-md: 0px !important;
-  --mi-radius-sm: 0px !important;
-  --mi-text-main: #0a0a0a !important;
-  --mi-text-sub: #404040 !important;
-  --mi-border: #0a0a0a !important;
-  --mi-orange: #d92027 !important;
-  --mi-card-bg: #f4f1ea !important;
+  --mi-radius-lg: 0px;
+  --mi-radius-md: 0px;
+  --mi-radius-sm: 0px;
 }
 
 html.theme-constructivism body {
-  background-color: #e8e4d9 !important;
-  background-image: 
-    radial-gradient(#111 1px, transparent 1px),
-    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-image:
+    radial-gradient(color-mix(in srgb, var(--mi-text-main) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--mi-text-main) 5%, transparent) 1px, transparent 1px);
   background-size: 24px 24px, 120px 120px;
 }
 
@@ -376,69 +549,60 @@ html.theme-constructivism .dashboard-grid::before {
   font-family: Impact, "Arial Black", sans-serif;
   font-size: 14px;
   letter-spacing: 2px;
-  background: #d92027;
-  color: #ffffff;
+  background: var(--mi-construct-red);
+  color: var(--mi-on-construct-red);
   padding: 2px 10px;
   transform: skewX(-12deg);
 }
 
-html.theme-constructivism .top-header,
-html.theme-constructivism .storage-card,
-html.theme-constructivism .chart-card,
-html.theme-constructivism .grid-card,
-html.theme-constructivism .recent-card,
+html.theme-constructivism .mi-surface,
 html.theme-constructivism .app-footer,
-html.theme-constructivism .custom-modal,
-html.theme-constructivism .explorer-modal,
 html.theme-constructivism .file-card,
 html.theme-constructivism .column-box {
-  background: #f4f1ea !important;
-  border: 3px solid #0a0a0a !important;
+  background: var(--mi-card-bg) !important;
+  border: 3px solid var(--mi-construct-ink) !important;
   border-radius: 0px !important;
-  box-shadow: 6px 6px 0px #0a0a0a !important;
+  box-shadow: 6px 6px 0px var(--mi-construct-ink) !important;
   position: relative;
 }
 
-/* 构成主义几何红黑角标与斜切斜线装饰 */
-html.theme-constructivism .storage-card::after,
-html.theme-constructivism .chart-card::after,
-html.theme-constructivism .grid-card::after,
-html.theme-constructivism .recent-card::after {
-  content: "№ 01";
+/* 构成主义几何红黑角标与斜切斜线装饰。
+   编号不再由 CSS 端维护一份「哪个卡片是几号」的清单（那种清单必然会
+   与实际类名脱节 —— 这里原本写的 .chart-card / .grid-card / .recent-card
+   在组件里根本不存在，所以 № 02/03/04 从来没出现过）。
+   改为组件自己通过 --mi-surface-label 声明，未声明则不生成角标。 */
+html.theme-constructivism .mi-surface::after {
+  content: var(--mi-surface-label, none);
   position: absolute;
   top: 0;
   right: 0;
-  background: #d92027;
-  color: #ffffff;
+  background: var(--mi-construct-red);
+  color: var(--mi-on-construct-red);
   font-family: Impact, "Arial Black", monospace;
   font-size: 11px;
   font-weight: bold;
   padding: 3px 8px;
   letter-spacing: 1px;
-  border-left: 2px solid #0a0a0a;
-  border-bottom: 2px solid #0a0a0a;
+  border-left: 2px solid var(--mi-construct-ink);
+  border-bottom: 2px solid var(--mi-construct-ink);
   pointer-events: none;
 }
-
-html.theme-constructivism .chart-card::after { content: "№ 02"; }
-html.theme-constructivism .grid-card::after { content: "№ 03"; }
-html.theme-constructivism .recent-card::after { content: "№ 04"; }
 
 /* 苏联宣传画/报刊木刻版画风格图片滤镜（高反差与粗糙颗粒网点） */
 html.theme-constructivism .media-img,
 html.theme-constructivism .preview-thumb {
   filter: contrast(125%) saturate(85%) sepia(15%) !important;
-  border: 2px solid #0a0a0a !important;
+  border: 2px solid var(--mi-construct-ink) !important;
   border-radius: 0px !important;
 }
 
 /* 构成主义进度条：双色工业标尺风格 */
 html.theme-constructivism .progress-bar,
 html.theme-constructivism .t-prog {
-  background: #0a0a0a !important;
+  background: var(--mi-construct-ink) !important;
   height: 14px !important;
   border-radius: 0px !important;
-  border: 2px solid #0a0a0a !important;
+  border: 2px solid var(--mi-construct-ink) !important;
   padding: 1px;
 }
 
@@ -446,10 +610,10 @@ html.theme-constructivism .progress-fill,
 html.theme-constructivism .t-fill {
   background: repeating-linear-gradient(
     -45deg,
-    #d92027,
-    #d92027 8px,
-    #0a0a0a 8px,
-    #0a0a0a 16px
+    var(--mi-construct-red),
+    var(--mi-construct-red) 8px,
+    var(--mi-construct-ink) 8px,
+    var(--mi-construct-ink) 16px
   ) !important;
   border-radius: 0px !important;
 }
@@ -461,8 +625,8 @@ html.theme-constructivism .device-name {
   text-transform: uppercase !important;
   letter-spacing: 1.5px !important;
   font-size: 18px !important;
-  color: #0a0a0a !important;
-  border-left: 6px solid #d92027;
+  color: var(--mi-text-main) !important;
+  border-left: 6px solid var(--mi-construct-red);
   padding-left: 10px;
 }
 
@@ -473,198 +637,207 @@ html.theme-constructivism .explorer-nav-btn,
 html.theme-constructivism .tab-btn,
 html.theme-constructivism .stat-pill {
   border-radius: 0px !important;
-  border: 2px solid #0a0a0a !important;
+  border: 2px solid var(--mi-construct-ink) !important;
   font-weight: 900 !important;
   letter-spacing: 0.5px;
-  box-shadow: 3px 3px 0px #0a0a0a !important;
+  box-shadow: 3px 3px 0px var(--mi-construct-ink) !important;
   text-transform: uppercase;
-  background: #ffffff !important;
-  color: #0a0a0a !important;
+  background: var(--mi-card-bg) !important;
+  color: var(--mi-text-main) !important;
 }
 
 html.theme-constructivism .explorer-nav-btn {
-  background: #d92027 !important;
-  color: #ffffff !important;
-  border-color: #0a0a0a !important;
+  background: var(--mi-construct-red) !important;
+  color: var(--mi-on-construct-red) !important;
+  border-color: var(--mi-construct-ink) !important;
 }
 
 html.theme-constructivism button:hover {
   transform: translate(-1px, -1px) !important;
-  box-shadow: 5px 5px 0px #0a0a0a !important;
+  box-shadow: 5px 5px 0px var(--mi-construct-ink) !important;
 }
 
 html.theme-constructivism button:active {
   transform: translate(2px, 2px) !important;
-  box-shadow: 1px 1px 0px #0a0a0a !important;
+  box-shadow: 1px 1px 0px var(--mi-construct-ink) !important;
 }
 
 html.theme-constructivism .power-tag {
-  background: #0a0a0a !important;
-  color: #ffffff !important;
+  background: var(--mi-construct-ink) !important;
+  color: var(--mi-card-bg) !important;
   font-weight: 900 !important;
   padding: 4px 10px !important;
   border-radius: 0px !important;
-  border-left: 4px solid #d92027 !important;
+  border-left: 4px solid var(--mi-construct-red) !important;
 }
 
-/* 全局暗色调系统适配 (Dark Mode System) */
+/* ==========================================================================
+   旧版硬编码中性色统一回收层 (Legacy Neutral Remap)
+   历史组件里写死了 #fff / #f1f5f9 / #334155 / #94a3b8 这类中性色，
+   在彩色主题或暗色模式下会与新底盘冲突（浅底盘配浅字等）。
+   这里把各组件里出现的这批死色统一映射为语义变量，
+   使元素随主题全局自适应，而无需逐个组件改样式。
+   ========================================================================== */
+html.theme-mica,
+html.theme-constructivism,
 html.dark {
-  --mi-bg: #0b0f19 !important;
-  --mi-card-bg: #151d2f !important;
-  --mi-text-main: #f1f5f9 !important;
-  --mi-text-sub: #94a3b8 !important;
-  --mi-border: #1e293b !important;
-  --mi-card-border: #1e293b !important;
-  --mi-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-  --mi-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
-  --mi-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+  /* 组件面板 / 浮层 */
+  --mi-legacy-panel: var(--mi-card-bg);
+  --mi-legacy-panel-sub: var(--mi-card-sub-bg);
+  --mi-legacy-well: var(--mi-control-sub-bg);
+  --mi-legacy-well-hover: var(--mi-control-bg);
+  --mi-legacy-text: var(--mi-text-main);
+  --mi-legacy-text-sub: var(--mi-text-sub);
+  --mi-legacy-text-mute: var(--mi-text-sub);
 }
 
-html.dark body {
-  background-color: #0b0f19 !important;
-  color: #f1f5f9 !important;
+/* 写死白色/浅灰底的面板与浮层 → 跟随卡片色 */
+html.theme-mica .crumb-dropdown-menu,
+html.theme-mica .miller-column,
+html.theme-mica .mount-box,
+html.theme-mica .modal-container,
+html.theme-mica .miller-columns-container,
+html.theme-mica .sidebar-tree,
+html.theme-mica .explorer-header,
+html.theme-mica .column-box,
+html.theme-mica .viewer-box,
+html.theme-mica .task-view,
+html.theme-mica .task-summary,
+html.dark .crumb-dropdown-menu,
+html.dark .miller-column,
+html.dark .mount-box,
+html.dark .modal-container,
+html.dark .explorer-header,
+html.dark .column-box,
+html.dark .viewer-box,
+html.dark .task-view,
+html.dark .task-summary {
+  background: var(--mi-legacy-panel) !important;
+  color: var(--mi-legacy-text) !important;
 }
 
-html.dark .top-header,
-html.dark .app-footer,
-html.dark .custom-modal,
-html.dark .explorer-modal {
-  background: #111827 !important;
-  border-color: #1e293b !important;
-  color: #f1f5f9 !important;
+/* 次级面板（列表凹槽、分栏、表头、进度槽）→ 跟随次级卡片色。
+   注意：毛玻璃模式下会被控件玻璃层接管的选择器（.row-op/.up-btn/.view-toggle/
+   .action-pill/.miller-toggle-btn）不在此列，避免覆盖玻璃质感。 */
+html.theme-mica .column-header,
+html.theme-mica .files-table th,
+html.theme-mica .upload-bar,
+html.theme-mica .card-preview,
+html.theme-mica .search-box,
+html.theme-mica .path-badge,
+html.theme-mica .type-tag,
+html.theme-mica .file-count,
+html.theme-mica .limit-select,
+html.theme-mica .tree-refresh-btn,
+html.theme-mica .crumb-menu-item:hover,
+html.theme-mica .tree-item:hover,
+html.theme-mica .tree-node-item:hover,
+html.theme-mica .crumb-seg-btn:hover,
+html.theme-mica .table-row:hover,
+html.dark .column-header,
+html.dark .files-table th,
+html.dark .upload-bar,
+html.dark .card-preview,
+html.dark .search-box,
+html.dark .path-badge,
+html.dark .type-tag,
+html.dark .file-count,
+html.dark .limit-select,
+html.dark .tree-refresh-btn,
+html.dark .crumb-menu-item:hover,
+html.dark .table-row:hover {
+  background: var(--mi-legacy-well) !important;
+  color: var(--mi-legacy-text) !important;
 }
 
-html.dark .mask-btn,
-html.dark .theme-nav-btn {
-  background: #1f293d !important;
-  border-color: #334155 !important;
-  color: #e2e8f0 !important;
+/* 写死深灰字（#334155 等）→ 跟随主题主文字色 */
+html.theme-mica .column-item,
+html.theme-mica .crumb-menu-item,
+html.theme-mica .tree-item,
+html.theme-mica .tree-node-item,
+html.theme-mica .upload-text,
+html.theme-mica .search-input,
+html.theme-mica .album-item,
+html.theme-mica .set-row b,
+html.theme-mica .setting-row b,
+html.theme-mica .d-row b,
+html.dark .crumb-menu-item,
+html.dark .upload-text {
+  color: var(--mi-legacy-text) !important;
 }
 
-html.dark .storage-card,
-html.dark .chart-card,
-html.dark .grid-card,
-html.dark .recent-card,
-html.dark .file-card {
-  background: #131b2e !important;
-  border-color: #1e293b !important;
+/* 写死浅灰说明字（#94a3b8 / #cbd5e1 等）→ 跟随主题次级文字色 */
+html.theme-mica .tree-section-title,
+html.theme-mica .col-empty,
+html.theme-mica .col-loading,
+html.theme-mica .ci-arrow,
+html.theme-mica .node-arrow,
+html.theme-mica .crumb-dropdown-arrow,
+html.theme-mica .crumb-menu-title,
+html.theme-mica .crumb-menu-loading,
+html.theme-mica .crumb-menu-empty,
+html.theme-mica .mount-sub,
+html.theme-mica .file-info-row,
+html.theme-mica .time-text,
+html.theme-mica .empty-sub,
+html.theme-mica .crumb-sep,
+html.theme-mica .a-count,
+html.theme-mica .stat-pill .label,
+html.dark .col-empty,
+html.dark .col-loading,
+html.dark .ci-arrow,
+html.dark .node-arrow,
+html.dark .crumb-dropdown-arrow,
+html.dark .crumb-menu-title,
+html.dark .crumb-menu-loading,
+html.dark .crumb-menu-empty,
+html.dark .mount-sub,
+html.dark .time-text,
+html.dark .empty-sub,
+html.dark .crumb-sep {
+  color: var(--mi-legacy-text-sub) !important;
 }
 
-html.dark .offline-banner {
-  background: #1e293b !important;
-  border-color: #334155 !important;
+/* 写死浅色选中底（#fff7ed）→ 改为强调色淡底，浅深主题下都保持对比度 */
+html.theme-mica .tree-item.active,
+html.theme-mica .tree-node-item.active,
+html.theme-mica .crumb-menu-item.active,
+html.theme-mica .miller-toggle-btn.active,
+html.theme-mica .folder-loading-tag,
+html.theme-mica .up-btn:hover,
+html.dark .tree-item.active,
+html.dark .tree-node-item.active,
+html.dark .crumb-menu-item.active,
+html.dark .miller-toggle-btn.active,
+html.dark .folder-loading-tag {
+  background: var(--mi-accent-soft) !important;
+  color: var(--mi-legacy-text) !important;
 }
 
-html.dark .offline-banner .banner-text strong {
-  color: #f8fafc !important;
+/* 删除类危险按钮：底色用红色淡底，避免浅色主题下深红字配深红底 */
+html.theme-mica .ca-btn.danger:hover,
+html.theme-mica .row-op.danger:hover,
+html.dark .ca-btn.danger:hover,
+html.dark .row-op.danger:hover {
+  background: var(--mi-status-red-soft) !important;
 }
 
-html.dark .offline-banner .banner-text span {
-  color: #94a3b8 !important;
+/* 骨架屏微光：颜色跟随主题，不再固定浅灰 */
+html.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--mi-card-sub-bg) 25%,
+    var(--mi-control-sub-bg) 50%,
+    var(--mi-card-sub-bg) 75%
+  ) !important;
 }
 
-html.dark .set-row {
-  background: #0f172a !important;
-  border-color: #1e293b !important;
+/* 滚动条随主题自适应 */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
 }
-
-html.dark .set-row span {
-  color: #94a3b8 !important;
-}
-
-html.dark .set-row b {
-  color: #f8fafc !important;
-}
-
-/* 暗色调下的暗夜云母磨砂模式 (Dark Mica) */
-html.dark.theme-mica-controls-only .top-header,
-html.dark.theme-mica-controls-only .storage-card,
-html.dark.theme-mica-controls-only .chart-card,
-html.dark.theme-mica-controls-only .grid-card,
-html.dark.theme-mica-controls-only .recent-card,
-html.dark.theme-mica-controls-only .app-footer,
-html.dark.theme-mica-controls-only .custom-modal,
-html.dark.theme-mica-controls-only .explorer-modal {
-  background: rgba(11, 15, 25, var(--mi-card-opacity, 0.6)) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-html.dark.theme-mica-controls-only button,
-html.dark.theme-mica-controls-only .tab-btn,
-html.dark.theme-mica-controls-only .mask-btn,
-html.dark.theme-mica-controls-only .theme-nav-btn,
-html.dark.theme-mica-controls-only .stat-pill,
-html.dark.theme-mica-controls-only .app-item,
-html.dark.theme-mica-controls-only .media-item,
-html.dark.theme-mica-controls-only .file-card,
-html.dark.theme-mica-controls-only .io-btn,
-html.dark.theme-mica-controls-only .action-btn,
-html.dark.theme-mica-controls-only .preset-card {
-  background: rgba(30, 41, 59, var(--mi-control-opacity, 0.7)) !important;
-  backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--mi-control-blur, 16px)) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  color: #f8fafc !important;
-}
-
-/* 暗色调下的暗夜苏俄构成主义模式 (Dark Constructivism / Midnight Soviet Avant-garde) */
-html.dark.theme-constructivism {
-  --mi-bg: #09090b !important;
-  --mi-card-bg: #121215 !important;
-  --mi-text-main: #f4f4f5 !important;
-  --mi-text-sub: #a1a1aa !important;
-  --mi-border: #27272a !important;
-  --mi-orange: #ef4444 !important;
-}
-
-html.dark.theme-constructivism body {
-  background-color: #09090b !important;
-  background-image: 
-    radial-gradient(#3f3f46 1px, transparent 1px),
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px) !important;
-}
-
-html.dark.theme-constructivism .top-header,
-html.dark.theme-constructivism .storage-card,
-html.dark.theme-constructivism .chart-card,
-html.dark.theme-constructivism .grid-card,
-html.dark.theme-constructivism .recent-card,
-html.dark.theme-constructivism .app-footer,
-html.dark.theme-constructivism .custom-modal,
-html.dark.theme-constructivism .explorer-modal,
-html.dark.theme-constructivism .file-card,
-html.dark.theme-constructivism .column-box {
-  background: #121215 !important;
-  border: 3px solid #27272a !important;
-  box-shadow: 6px 6px 0px #000000 !important;
-}
-
-html.dark.theme-constructivism .gazette-headline,
-html.dark.theme-constructivism .gazette-meta-strip {
-  background: #121215 !important;
-  border-color: #27272a !important;
-  color: #f4f4f5 !important;
-}
-
-html.dark.theme-constructivism .gazette-headline h2 {
-  color: #f4f4f5 !important;
-}
-
-html.dark.theme-constructivism button,
-html.dark.theme-constructivism .mask-btn,
-html.dark.theme-constructivism .theme-nav-btn,
-html.dark.theme-constructivism .tab-btn,
-html.dark.theme-constructivism .stat-pill {
-  background: #18181b !important;
-  color: #f4f4f5 !important;
-  border-color: #3f3f46 !important;
-  box-shadow: 3px 3px 0px #000000 !important;
-}
-
-html.dark.theme-constructivism .card-header h3,
-html.dark.theme-constructivism .section-hdr h3,
-html.dark.theme-constructivism .device-name {
-  color: #f4f4f5 !important;
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 * {
@@ -686,6 +859,92 @@ button {
   border: none;
   background: none;
   font-family: inherit;
+}
+
+/* ===========================================================================
+   视频播放器控件主题化
+   ---------------------------------------------------------------------------
+   video.js 的控件节点是运行时动态插入的，组件的 scoped 样式碰不到它们，
+   因此这段必须放在全局样式里。
+
+   两点背景：
+   1. 控制条默认 display:none，要等 `playing` 事件把 vjs-has-started 加上才显示。
+      片源是 MKV/HEVC 等浏览器解不了的格式时，这个事件永远不来，
+      于是「视频打不开」和「完全没有操作界面」同时出现。
+      下面用 vjs-error 之外的兜底把控制条显出来，并保证失败时有明确提示。
+   2. 云母主题的 `html.theme-mica-controls-only button` 规则带 !important，
+      会把播放器按钮一并刷成白色毛玻璃，与视频画面完全不搭。
+      这里用同等优先级的选择器把播放器内的按钮排除回播放器自己的深色外观。
+   =========================================================================== */
+
+/* 控制条配色跟随主题令牌（遮罩保持深色，其上的文字/进度条由引擎校验） */
+.video-js .vjs-control-bar {
+  background-color: var(--mi-player-scrim, rgba(10, 14, 24, 0.88));
+  color: var(--mi-player-scrim-text, #ffffff);
+}
+
+.video-js .vjs-play-progress,
+.video-js .vjs-volume-level {
+  background-color: var(--mi-player-accent, var(--mi-orange));
+}
+
+.video-js .vjs-play-progress:before {
+  color: var(--mi-player-accent, var(--mi-orange));
+}
+
+.video-js .vjs-load-progress,
+.video-js .vjs-load-progress div {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.video-js .vjs-slider {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.video-js .vjs-control:hover,
+.video-js .vjs-control:focus {
+  color: var(--mi-player-scrim-text, #ffffff);
+}
+
+.video-js .vjs-time-control,
+.video-js .vjs-duration,
+.video-js .vjs-current-time,
+.video-js .vjs-remaining-time {
+  color: var(--mi-player-scrim-text-dim, rgba(255, 255, 255, 0.75));
+}
+
+/* 播放器内的按钮不受云母毛玻璃规则影响 */
+html.theme-mica-controls-only .video-js button,
+html.theme-mica-controls-only .video-js .vjs-control,
+html.theme-mica-controls-only .video-js .vjs-big-play-button,
+html.theme-mica-all-containers .video-js button,
+html.theme-mica-all-containers .video-js .vjs-control,
+html.theme-mica-all-containers .video-js .vjs-big-play-button {
+  background: none !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  color: var(--mi-player-scrim-text, #ffffff) !important;
+}
+
+html.theme-mica-controls-only .video-js .vjs-big-play-button,
+html.theme-mica-all-containers .video-js .vjs-big-play-button {
+  background: rgba(10, 14, 24, 0.7) !important;
+  border: 0.06666em solid var(--mi-player-scrim-text, #ffffff) !important;
+}
+
+/* 大播放按钮与错误提示：压在画面上，固定深色底 + 高对比文字 */
+.video-js .vjs-big-play-button {
+  background-color: rgba(10, 14, 24, 0.7);
+  border-color: var(--mi-player-scrim-text, #ffffff);
+  color: var(--mi-player-scrim-text, #ffffff);
+}
+
+.video-js .vjs-error-display,
+.video-js .vjs-modal-dialog {
+  background: var(--mi-player-scrim, rgba(10, 14, 24, 0.88));
+  color: var(--mi-player-scrim-text, #ffffff);
 }
 
 /* 全局平滑微交互动效 */

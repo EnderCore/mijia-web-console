@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "npm run guard && vite build",
+    "build:fast": "vite build",
+    "preview": "vite preview",
+    "guard": "node scripts/contrast-guard.mjs",
+    "audit:contrast": "node scripts/contrast-guard.mjs"
   },
   "dependencies": {
     "video.js": "^8.24.1",

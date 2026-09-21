@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="doc-backdrop" @click.self="$emit('close')">
-    <div class="doc-container">
+    <div class="doc-container mi-surface">
       <!-- 顶部控制条 -->
       <div class="doc-header">
         <div class="doc-meta">
@@ -209,7 +209,7 @@ watch(() => props.visible, (val) => {
   width: 86vw;
   max-width: 1100px;
   height: 85vh;
-  background: var(--mi-card-bg, #ffffff);
+  background: var(--mi-card-bg);
   border-radius: var(--mi-radius-lg);
   overflow: hidden;
   display: flex;
@@ -224,7 +224,7 @@ watch(() => props.visible, (val) => {
   align-items: center;
   padding: 14px 24px;
   border-bottom: 1px solid var(--mi-border);
-  background: var(--mi-card-sub-bg, #f8fafc);
+  background: var(--mi-card-sub-bg);
 }
 
 .doc-meta {
@@ -250,8 +250,8 @@ watch(() => props.visible, (val) => {
 
 .size-badge {
   font-size: 11px;
-  background: var(--mi-control-sub-bg, #e2e8f0);
-  color: var(--mi-text-sub, #475569);
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-text-sub);
   padding: 2px 8px;
   border-radius: 6px;
   font-weight: 600;
@@ -268,19 +268,19 @@ watch(() => props.visible, (val) => {
   font-weight: 600;
   color: var(--mi-orange);
   text-decoration: none;
-  background: rgba(255, 103, 0, 0.1);
+  background: var(--mi-accent-soft);
   padding: 5px 12px;
   border-radius: 6px;
   transition: all 0.15s;
 }
 
 .download-btn:hover {
-  background: rgba(255, 103, 0, 0.2);
+  background: var(--mi-accent-soft);
 }
 
 .close-x {
   font-size: 18px;
-  color: var(--mi-text-sub, #94a3b8);
+  color: var(--mi-text-sub);
   padding: 4px;
 }
 
@@ -291,7 +291,7 @@ watch(() => props.visible, (val) => {
 .doc-body {
   flex: 1;
   overflow: hidden;
-  background: var(--mi-card-bg, #f1f5f9);
+  background: var(--mi-card-bg);
   display: flex;
 }
 
@@ -310,7 +310,7 @@ watch(() => props.visible, (val) => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #f8fafc;
+  color: var(--mi-text-main);
   font-size: 13px;
 }
 
@@ -326,13 +326,13 @@ watch(() => props.visible, (val) => {
 .pdf-frame {
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--mi-card-bg);
 }
 
 .body-text-box {
   width: 100%;
   height: 100%;
-  background: #1e293b;
+  background: var(--mi-card-sub-bg);
   overflow: auto;
   padding: 24px 32px;
 }
@@ -340,14 +340,14 @@ watch(() => props.visible, (val) => {
 .text-code-view {
   font-family: Consolas, Monaco, "Courier New", monospace;
   font-size: 13px;
-  color: #e2e8f0;
+  color: var(--mi-text-main);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
 .text-loading, .text-error {
-  color: #94a3b8;
+  color: var(--mi-text-sub);
   padding: 40px;
   text-align: center;
 }
@@ -356,7 +356,7 @@ watch(() => props.visible, (val) => {
 .body-audio-box {
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--mi-card-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -403,7 +403,7 @@ watch(() => props.visible, (val) => {
 .body-unknown-box {
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--mi-card-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -428,7 +428,7 @@ watch(() => props.visible, (val) => {
 .download-large-btn {
   margin-top: 10px;
   background: var(--mi-orange);
-  color: #ffffff;
+  color: var(--mi-on-accent);
   padding: 10px 24px;
   border-radius: 8px;
   font-size: 14px;
@@ -442,18 +442,18 @@ watch(() => props.visible, (val) => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 24px;
-  background: #f8fafc;
+  background: var(--mi-card-sub-bg);
   border-top: 1px solid var(--mi-border);
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--mi-text-sub);
 }
 
 .code-path {
   font-family: monospace;
-  background: #e2e8f0;
+  background: var(--mi-control-sub-bg);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #334155;
+  color: var(--mi-text-main);
 }
 
 @keyframes fadeIn {
