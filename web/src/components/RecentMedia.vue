@@ -286,12 +286,19 @@ function formatDate(timestamp) {
   position: relative;
   background: var(--mi-control-sub-bg);
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .media-img {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: cover;
+  flex-shrink: 0;
+  display: block;
   transition: transform 0.3s;
 }
 

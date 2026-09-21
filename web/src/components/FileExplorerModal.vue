@@ -1887,7 +1887,11 @@ html.theme-mica .sidebar-tree {
 .preview-thumb {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: cover;
+  flex-shrink: 0;
+  display: block;
 }
 
 .preview-emoji {

@@ -398,8 +398,40 @@ function imageMimeFor(p) {
   return m.startsWith("image/") ? m : "image/jpeg";
 }
 
+// 校验缓存图像文件的完整性，防止截断的残损文件导致浏览器仅渲染上半部分
+function isImageComplete(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < 64) return false;
+    const fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(Math.min(stat.size, 4096));
+    fs.readSync(fd, buf, 0, buf.length, 0);
+    const endBuf = Buffer.alloc(Math.min(stat.size, 64));
+    fs.readSync(fd, endBuf, 0, endBuf.length, stat.size - endBuf.length);
+    fs.closeSync(fd);
+
+    // JPEG 校验: FFD8 开头，且必须以 FFD9 结尾 (允许尾部空字节)
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = endBuf.length - 1;
+      while (i >= 0 && endBuf[i] === 0x00) i--;
+      return i >= 1 && endBuf[i - 1] === 0xff && endBuf[i] === 0xd9;
+    }
+    // PNG 校验: 89504E470D0A1A0A 开头，且包含 IEND 尾部标记
+    if (buf.length >= 8 && buf.toString("hex", 0, 8) === "89504e470d0a1a0a") {
+      return endBuf.includes("IEND");
+    }
+    // GIF / WebP / 矢量卡片
+    if (buf.toString("utf8", 0, 3) === "GIF" || buf.toString("utf8", 0, 4) === "RIFF") {
+      return true;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function generateSvgThumbnailRaw(title, color1, color2, icon) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260" preserveAspectRatio="xMidYMid slice">
     <defs>
       <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stop-color="${color1}"/>
@@ -1038,12 +1070,19 @@ const server = http.createServer(async (req, res) => {
     const cacheKey = crypto.createHash("md5").update(`${filePath}_${size}`).digest("hex") + ".img";
     const localCachedFile = path.join(CACHE_DIR, cacheKey);
 
-    // 优先命中本地磁盘缓存 (秒级响应)
+    // 优先命中本地磁盘缓存 (秒级响应，严格校验文件完整性，杜绝截断残损图片)
     if (fs.existsSync(localCachedFile)) {
       // 检查缓存内容是否为未转码的原始 HEIC（历史遗留问题处理）
       const isHeic = /\.(heic|heif)$/i.test(filePath);
-      let isValidJpg = true;
-      if (isHeic) {
+      let isValidImage = true;
+
+      // 严格完整性校验：若文件被异常截断或损坏，自动剔除并走回源重新拉取
+      if (!isImageComplete(localCachedFile)) {
+        isValidImage = false;
+        try { fs.unlinkSync(localCachedFile); } catch (e) {}
+      }
+
+      if (isValidImage && isHeic) {
         try {
           const fd = fs.openSync(localCachedFile, "r");
           const buf = Buffer.alloc(16);
@@ -1051,15 +1090,15 @@ const server = http.createServer(async (req, res) => {
           fs.closeSync(fd);
           // 若文件头包含 ftyp/heic/mif1 说明是旧的原装 HEIC 文件，不能直接发给浏览器，需删掉重新转码
           if (buf.includes("ftyp") || buf.includes("heic") || buf.includes("mif1")) {
-            isValidJpg = false;
+            isValidImage = false;
             try { fs.unlinkSync(localCachedFile); } catch (e) {}
           }
         } catch (e) {
-          isValidJpg = false;
+          isValidImage = false;
         }
       }
 
-      if (isValidJpg) {
+      if (isValidImage) {
         res.writeHead(200, {
           "Content-Type": isHeic ? "image/jpeg" : imageMimeFor(filePath),
           "Cache-Control": "public, max-age=604800, immutable",
@@ -1139,11 +1178,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 图片：经 WebDAV 取原图并落盘缓存 (受并发槽位保护，避免拥堵隧道)
+    // 采用原子写入机制：先落盘至 temp 文件，下载完成并严格校验完整性后原子重命名为 .img，杜绝生成截断残损文件！
     let dav;
     await acquireThumbnailSlot();
     try {
       await ensureReady();
-      dav = await callWebdav("GET", filePath, {}, null, 30000);
+      dav = await callWebdav("GET", filePath, {}, null, 35000);
     } catch (e) {
       releaseThumbnailSlot();
       sendSvgDirectly();
@@ -1157,14 +1197,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const tempCachedFile = path.join(CACHE_DIR, `temp_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.tmp`);
+    const writeStream = fs.createWriteStream(tempCachedFile);
+
     res.writeHead(200, {
       "Content-Type": dav.headers["content-type"] || imageMimeFor(filePath),
       "Cache-Control": "public, max-age=604800, immutable",
       "X-Cache-Lookup": "MISS"
     });
-    const writeStream = fs.createWriteStream(localCachedFile);
-    dav.on("end", releaseThumbnailSlot);
-    dav.on("error", releaseThumbnailSlot);
+
+    dav.on("end", () => {
+      releaseThumbnailSlot();
+      writeStream.end(() => {
+        // 校验文件完整性，若未完整下载（如中途断连/超时）则直接删除临时文件，不写入正规缓存
+        if (isImageComplete(tempCachedFile)) {
+          try {
+            fs.renameSync(tempCachedFile, localCachedFile);
+          } catch (e) {
+            try { fs.copyFileSync(tempCachedFile, localCachedFile); fs.unlinkSync(tempCachedFile); } catch (err) {}
+          }
+        } else {
+          try { fs.unlinkSync(tempCachedFile); } catch (e) {}
+        }
+      });
+    });
+
+    dav.on("error", (err) => {
+      releaseThumbnailSlot();
+      try { writeStream.destroy(); fs.unlinkSync(tempCachedFile); } catch (e) {}
+    });
+
     dav.pipe(writeStream);
     dav.pipe(res);
     return;
