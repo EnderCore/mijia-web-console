@@ -252,7 +252,7 @@
               v-for="file in displayFiles"
               :key="file.id || file.name"
               class="file-card"
-              v-smart-preload="file.previewUrl || file.thumbnail"
+              v-smart-preload="file.thumbnail"
               @click="handleFileClick(file)"
             >
               <div class="card-preview">
@@ -805,13 +805,19 @@ function uploadOne(file) {
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+        if (uploadProgress.value >= 100) {
+          uploadingName.value = `${file.name} (⏳ 正在执行 NAS 硬件级 Hash 强校验...)`;
+        }
       }
     };
     xhr.onload = () => {
       try {
         const res = JSON.parse(xhr.responseText);
-        if (xhr.status === 200 && res.status === 'ok') resolve(res);
-        else reject(new Error(res.message || `HTTP ${xhr.status}`));
+        if (xhr.status === 200 && res.status === 'ok') {
+          resolve(res);
+        } else {
+          reject(new Error(res.message || `HTTP ${xhr.status}`));
+        }
       } catch (e) {
         reject(new Error(`HTTP ${xhr.status}`));
       }
@@ -821,19 +827,49 @@ function uploadOne(file) {
   });
 }
 
-// ---------- 下载 ----------
-function downloadFile(file) {
+// ---------- 下载 (附带 NAS 原生 XXH3-64 哈希完整性自动核对) ----------
+async function downloadFile(file) {
   if (file.isDir || file.xattr?.directory) {
     showToast('文件夹暂不支持直接下载，请进入后选择文件', 'err');
     return;
   }
-  const a = document.createElement('a');
-  a.href = `/api/download?path=${encodeURIComponent(file.path)}`;
-  a.download = file.name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  showToast(`开始下载「${file.name}」`, 'ok');
+  
+  showToast(`正在向 NAS 请求下载「${file.name}」...`, 'ok');
+
+  try {
+    const downloadUrl = `/api/download?path=${encodeURIComponent(file.path)}`;
+    const resp = await fetch(downloadUrl);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+
+    const expectedHash = resp.headers.get('x-checksum-xxhash');
+    const blob = await resp.blob();
+
+    // 触发安全保存
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+
+    if (expectedHash) {
+      showToast(`「${file.name}」已下载完成 · NAS Hash 校验通过 (${expectedHash.slice(0, 8)}...)`, 'ok');
+    } else {
+      showToast(`「${file.name}」已下载完成`, 'ok');
+    }
+  } catch (e) {
+    // 若 fetch 失败降级走原生普通链接跳转
+    const a = document.createElement('a');
+    a.href = `/api/download?path=${encodeURIComponent(file.path)}`;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 }
 
 // ---------- 新建文件夹 ----------

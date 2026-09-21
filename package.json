@@ -22,5 +22,8 @@
     "reverse-engineering",
     "p2p",
     "mtls"
-  ]
+  ],
+  "dependencies": {
+    "hash-wasm": "^4.12.0"
+  }
 }

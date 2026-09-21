@@ -45,7 +45,7 @@
           v-for="file in pagedFiles"
           :key="file.id || file.name"
           class="media-item"
-          v-smart-preload="file.previewUrl || file.thumbnail"
+          v-smart-preload="file.thumbnail"
           @click="$emit('preview-media', file)"
         >
           <div class="thumb-container">

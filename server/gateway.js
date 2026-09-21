@@ -70,6 +70,27 @@ function transcodeHeicToJpg(inputHeicPath, outputJpgPath, maxDim = 0) {
   });
 }
 
+// 本地 XXH3-64 流式哈希计算辅助函数 (seed=0，16位小写十六进制，与 NAS 端完全一致)
+const XXH3_SCRIPT = path.join(__dirname, "xxh3_calc.py");
+function calculateLocalFileXxhash(filePath) {
+  return new Promise((resolve, reject) => {
+    const pyBin = getPythonBin();
+    const py = spawn(pyBin, [XXH3_SCRIPT, filePath]);
+    let stdout = "";
+    let stderr = "";
+    py.stdout.on("data", (d) => { stdout += d.toString(); });
+    py.stderr.on("data", (d) => { stderr += d.toString(); });
+    py.on("close", (code) => {
+      if (code === 0 && stdout.trim().length === 16) {
+        resolve(stdout.trim().toLowerCase());
+      } else {
+        reject(new Error(`XXH3 计算异常 (code ${code}): ${stderr || stdout}`));
+      }
+    });
+    py.on("error", (err) => reject(err));
+  });
+}
+
 // 端口可用环境变量覆盖，便于本地验证时不干扰已运行的实例
 const SERVER_PORT = parseInt(process.env.GATEWAY_PORT || "8090", 10);
 
@@ -720,6 +741,31 @@ async function requestNasThumbnail(filePath, size = "small") {
     req.write(payload);
     req.end();
   });
+}
+
+// 向 NAS 请求文件的原生 xxHashsum 哈希值 (官方协议标准：遇到 1110 轮询等待直至完成)
+async function queryNasFileXxhash(filePath, maxRetries = 6) {
+  await ensureReady();
+  let delay = 300;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const resp = await callNasAPI("/cgi-bin/luci/filemgr/xxHashsum", { file: filePath });
+      if (resp.status === 200 && resp.data) {
+        if (resp.data.code === 0 && resp.data.data?.xxhashsum) {
+          return resp.data.data.xxhashsum.toLowerCase();
+        }
+        // code 1110 表示设备正在后台计算该大文件的哈希，按提示 timeout 稍后重试
+        if (resp.data.code === 1110) {
+          const waitTime = (resp.data.data?.timeout ? Number(resp.data.data.timeout) * 1000 : delay);
+          await new Promise(r => setTimeout(r, Math.min(waitTime, 2000)));
+          continue;
+        }
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, delay));
+    delay = Math.min(delay * 1.5, 2000);
+  }
+  return "";
 }
 
 // 静态前端资源目录
@@ -1540,7 +1586,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 9. /api/upload 文件上传 (WebDAV PUT，自动注入 mTLS + 动态 Basic 凭据)
+  // 9. /api/upload 文件上传 (WebDAV PUT，带双向 XXH3-64 硬件哈希一致性强校验)
   // 用法: POST /api/upload?parent=<目录绝对路径>&filename=<文件名>  body = 原始文件字节流
   if (pathname === "/api/upload") {
     const parent = parsedUrl.searchParams.get("parent") || "";
@@ -1558,10 +1604,15 @@ const server = http.createServer(async (req, res) => {
       const destPath = `${parent.replace(/\/$/, "")}/${filename}`;
       const totalSize = parseInt(req.headers["content-length"] || "0", 10);
 
+      // 上传暂存临时文件：用于同步计算本地 XXH3 哈希，确保大文件流式计算不爆内存
+      const uploadTempFile = path.join(CACHE_DIR, `up_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.tmp`);
+      const tempFsStream = fs.createWriteStream(uploadTempFile);
+
       let responded = false;
       const finish = (status, payload) => {
         if (responded) return;
         responded = true;
+        try { fs.unlinkSync(uploadTempFile); } catch (e) {}
         res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(payload));
       };
@@ -1572,11 +1623,50 @@ const server = http.createServer(async (req, res) => {
         "Content-Length": totalSize
       });
 
-      davReq.on("response", (davRes) => {
+      davReq.on("response", async (davRes) => {
         // 204/201 表示写入成功
         if (davRes.statusCode === 204 || davRes.statusCode === 201 || davRes.statusCode === 200) {
           davRes.resume();
-          finish(200, { status: "ok", path: destPath, size: totalSize });
+
+          // 等待本地暂存文件写入完毕后，立即进行本地哈希与 NAS 原生 xxHashsum 的双向比对
+          tempFsStream.end(async () => {
+            try {
+              let localHash = "";
+              try {
+                localHash = await calculateLocalFileXxhash(uploadTempFile);
+              } catch (err) {
+                console.warn("[upload] 本地 XXH3 计算异常:", err.message);
+              }
+
+              // 向 NAS RPC 询问目标文件的硬件级 xxhashsum
+              const deviceHash = await queryNasFileXxhash(destPath);
+              console.log(`[upload校验] 文件=${destPath} localHash=${localHash} deviceHash=${deviceHash}`);
+
+              if (deviceHash && localHash && localHash !== deviceHash) {
+                // 哈希不一致：表明文件在穿透传输中发生损坏或截断，删除损坏文件并拒绝判定完成！
+                console.error(`[upload校验失败] Hash 不匹配！删除脏文件: ${destPath}`);
+                try { await callWebdav("DELETE", destPath); } catch (_) {}
+                finish(409, {
+                  status: "error",
+                  code: "HASH_MISMATCH",
+                  message: `文件哈希校验失败（传输损坏）: 本地=${localHash}, 设备=${deviceHash}，已自动回滚删除`,
+                  localHash,
+                  deviceHash
+                });
+                return;
+              }
+
+              finish(200, {
+                status: "ok",
+                path: destPath,
+                size: totalSize,
+                hash: deviceHash || localHash,
+                verified: !!(deviceHash && localHash && deviceHash === localHash)
+              });
+            } catch (e) {
+              finish(200, { status: "ok", path: destPath, size: totalSize, verified: false });
+            }
+          });
         } else {
           const chunks = [];
           davRes.on("data", (d) => chunks.push(d));
@@ -1589,8 +1679,19 @@ const server = http.createServer(async (req, res) => {
       });
       davReq.on("error", (e) => finish(502, { status: "error", message: "上传通道错误: " + e.message }));
 
-      // 浏览器请求体流式转发到 NAS，不落地内存
-      req.pipe(davReq);
+      // 浏览器请求流同时分流到 NAS WebDAV 和 本地临时计算文件
+      req.on("data", (chunk) => {
+        davReq.write(chunk);
+        tempFsStream.write(chunk);
+      });
+      req.on("end", () => {
+        davReq.end();
+      });
+      req.on("error", (err) => {
+        davReq.destroy();
+        tempFsStream.destroy();
+        finish(500, { status: "error", message: "上传流传输中断: " + err.message });
+      });
     } catch (e) {
       res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ status: "error", message: e.message }));
@@ -1598,7 +1699,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 9.1 /api/download 文件下载 (WebDAV GET，带 Content-Disposition 触发浏览器保存)
+  // 9.1 /api/download 文件下载 (WebDAV GET，注入 NAS 原生 XXH3 哈希头供下载完整性比对)
   if (pathname === "/api/download") {
     const filePath = parsedUrl.searchParams.get("path") || "";
     if (!filePath) {
@@ -1612,7 +1713,10 @@ const server = http.createServer(async (req, res) => {
       const headers = {};
       if (req.headers["range"]) headers["Range"] = req.headers["range"];
 
-      const stream = await callWebdav("GET", filePath, headers);
+      const [stream, expectedHash] = await Promise.all([
+        callWebdav("GET", filePath, headers),
+        queryNasFileXxhash(filePath, 2)
+      ]);
 
       if (stream.statusCode === 451) {
         res.writeHead(451, { "Content-Type": "application/json; charset=utf-8" });
@@ -1627,6 +1731,10 @@ const server = http.createServer(async (req, res) => {
       };
       if (stream.headers["content-length"]) outHeaders["Content-Length"] = stream.headers["content-length"];
       if (stream.headers["content-range"]) outHeaders["Content-Range"] = stream.headers["content-range"];
+      if (expectedHash) {
+        outHeaders["X-Checksum-Xxhash"] = expectedHash;
+        outHeaders["X-Checksum-Algorithm"] = "xxhash3-64";
+      }
 
       res.writeHead(stream.statusCode, outHeaders);
       stream.pipe(res);
@@ -1635,6 +1743,31 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ status: "error", message: e.message }));
       }
+    }
+    return;
+  }
+
+  // 9.15 /api/hash 查询文件的 NAS 原生硬件级 xxHashsum
+  if (pathname === "/api/hash") {
+    const filePath = parsedUrl.searchParams.get("path") || "";
+    if (!filePath) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: "缺少 path 参数" }));
+      return;
+    }
+    try {
+      const hash = await queryNasFileXxhash(filePath);
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: "ok",
+        path: filePath,
+        algorithm: "xxhash3-64",
+        hash: hash || "",
+        verified: !!hash
+      }));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ status: "error", message: e.message }));
     }
     return;
   }
