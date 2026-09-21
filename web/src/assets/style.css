@@ -355,11 +355,11 @@ html.dark .load-more-btn:hover {
    浅色玻璃自动配深字、深色玻璃自动配浅字。 */
 
 /* 模式 1：仅按钮和控件磨砂（核心推荐：大容器高透，壁纸清晰，控件磨砂发光）
-   —— 大容器（.mi-surface）不模糊，让壁纸完整高清透出。 */
+   —— 大容器（.mi-surface）高透，若设置了 cardBlur 则以柔和模糊作为底盘质感。 */
 html.theme-mica-controls-only .mi-surface {
   background: var(--mi-card-bg) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: blur(var(--mi-backdrop-blur, 0px)) saturate(var(--mi-backdrop-saturate, 100%)) !important;
+  -webkit-backdrop-filter: blur(var(--mi-backdrop-blur, 0px)) saturate(var(--mi-backdrop-saturate, 100%)) !important;
   border: 1px solid var(--mi-card-border) !important;
   box-shadow: var(--mi-card-shadow) !important;
 }

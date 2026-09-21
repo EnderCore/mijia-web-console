@@ -982,7 +982,7 @@ function handleFileClick(file) {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -1002,6 +1002,16 @@ function handleFileClick(file) {
   flex-direction: column;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+}
+
+/* 磨砂主题下让侧边栏和头部保持柔和半透，透出窗口背后的高斯模糊与壁纸底色 */
+html.theme-mica .explorer-header {
+  background: var(--mi-control-bg-glass, rgba(255, 255, 255, 0.72));
+  backdrop-filter: blur(var(--mi-control-blur, 16px));
+}
+
+html.theme-mica .sidebar-tree {
+  background: var(--mi-control-bg-glass, rgba(255, 255, 255, 0.65));
 }
 
 .explorer-header {

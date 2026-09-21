@@ -115,7 +115,7 @@ export const PRESETS = {
     bgTint: 'rgba(15, 23, 42, 0.25)',
     cardBg: 'rgba(255, 255, 255, 0.45)',
     cardOpacity: 55,
-    cardBlur: 0,
+    cardBlur: 16,
     cardSaturate: 160,
     cardBorder: 'rgba(255, 255, 255, 0.4)',
     cardShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
@@ -123,7 +123,7 @@ export const PRESETS = {
     primaryFont: 'sans-serif',
     borderRadius: '16px',
     isConstructivism: false,
-    blurScope: 'controls_only',
+    blurScope: 'all_containers',
     controlBlur: 16,
     controlOpacity: 70
   },
