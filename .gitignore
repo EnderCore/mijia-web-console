@@ -9,6 +9,9 @@ build/
 
 # Local cache & runtime artifacts
 server/cache/
+server/transfer-records.json
+server/transfer-records.json.tmp
+server/run.log
 *.log
 *.tmp
 

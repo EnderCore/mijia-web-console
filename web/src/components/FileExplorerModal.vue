@@ -827,26 +827,57 @@ function uploadOne(file) {
   });
 }
 
-// ---------- 下载 (附带 NAS 原生 XXH3-64 哈希完整性自动核对) ----------
+// ---------- 下载 ----------
+//
+// 校验策略：「小文件强校验 + 大文件降级」。
+//   小文件（≤ 64MB）走 fetch 读入 blob，核对响应声明的字节数与实收字节数是否一致，
+//   这样能保证浏览器完整收到网关发出的每一字节（网关侧已比对过与 NAS 的 XXH3）。
+//   大文件改用浏览器直连导航下载，由浏览器流式落盘，避免把整个文件读进内存导致页面崩溃；
+//   这类传输在任务中心会标注为「未做客户端校验」，Hash 复查仍可在网关记录中查看。
+const CLIENT_VERIFY_MAX_BYTES = 64 * 1024 * 1024;
+
+function triggerBrowserDownload(file) {
+  const a = document.createElement('a');
+  a.href = `/api/download?path=${encodeURIComponent(file.path)}`;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 async function downloadFile(file) {
   if (file.isDir || file.xattr?.directory) {
     showToast('文件夹暂不支持直接下载，请进入后选择文件', 'err');
     return;
   }
-  
-  showToast(`正在向 NAS 请求下载「${file.name}」...`, 'ok');
+
+  // 大文件直连下载：交给浏览器流式处理，不进内存
+  const knownSize = parseInt(file.size || 0, 10);
+  if (knownSize > CLIENT_VERIFY_MAX_BYTES) {
+    triggerBrowserDownload(file);
+    showToast(`「${file.name}」开始下载（大文件直连，未做客户端校验，可在任务中心查看 Hash 记录）`, 'ok');
+    return;
+  }
+
+  showToast(`正在下载「${file.name}」...`, 'ok');
 
   try {
-    const downloadUrl = `/api/download?path=${encodeURIComponent(file.path)}`;
-    const resp = await fetch(downloadUrl);
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status}`);
-    }
+    const resp = await fetch(`/api/download?path=${encodeURIComponent(file.path)}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
+    const declared = parseInt(resp.headers.get('content-length') || '0', 10);
     const expectedHash = resp.headers.get('x-checksum-xxhash');
     const blob = await resp.blob();
 
-    // 触发安全保存
+    // 字节数核对：实收与声明不一致说明传输被截断，不落盘直接报错
+    if (declared > 0 && blob.size !== declared) {
+      showToast(
+        `「${file.name}」传输不完整：收到 ${blob.size} 字节，应为 ${declared} 字节，已放弃保存`,
+        'err'
+      );
+      return;
+    }
+
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
@@ -856,19 +887,14 @@ async function downloadFile(file) {
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
 
-    if (expectedHash) {
-      showToast(`「${file.name}」已下载完成 · NAS Hash 校验通过 (${expectedHash.slice(0, 8)}...)`, 'ok');
-    } else {
-      showToast(`「${file.name}」已下载完成`, 'ok');
-    }
+    // 这里只断言字节完整；内容层面的 XXH3 比对由网关在转发时完成，
+    // 结果记录在任务中心，可用 NAS 返回的哈希人工复核。
+    const hashHint = expectedHash ? ` · NAS Hash ${expectedHash.slice(0, 8)}…` : '';
+    showToast(`「${file.name}」下载完成，字节完整（${blob.size} B）${hashHint}`, 'ok');
   } catch (e) {
-    // 若 fetch 失败降级走原生普通链接跳转
-    const a = document.createElement('a');
-    a.href = `/api/download?path=${encodeURIComponent(file.path)}`;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // fetch 失败（如超大文件内存不足）降级为浏览器直连
+    triggerBrowserDownload(file);
+    showToast(`「${file.name}」已改用直连下载（${e.message}）`, 'ok');
   }
 }
 

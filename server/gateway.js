@@ -107,6 +107,153 @@ if (!fs.existsSync(CACHE_DIR)) {
 // 服务端缩略图缓存版本戳：清理缓存后递增，联动前端 URL 破除浏览器 HTTP 强缓存
 let CACHE_EPOCH = Date.now();
 
+// ============ 传输记录存储 (上传/下载进度、速率与 Hash 校验明细) ============
+//
+// 为什么需要它：任务中心的数据来自 NAS 的 taskcenter，而 NAS 只登记自己发起的
+// 内部任务（删除/复制/压缩等）。网页上的上传/下载对 NAS 只是普通 PUT/GET，
+// 不会进任务中心，所以这里由网关补记，并合并进 /api/tasks 展示。
+//
+// retention = 0 表示全部保留（默认），也可设为正整数只保留最近 N 条。
+const TRANSFER_STORE_FILE = path.join(__dirname, "transfer-records.json");
+const transferStore = { settings: { retention: 0 }, records: [] };
+let transferFlushTimer = null;
+
+function loadTransferStore() {
+  try {
+    if (fs.existsSync(TRANSFER_STORE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(TRANSFER_STORE_FILE, "utf8"));
+      if (parsed && typeof parsed === "object") {
+        transferStore.settings.retention = Number(parsed.settings?.retention) || 0;
+        transferStore.records = Array.isArray(parsed.records) ? parsed.records : [];
+      }
+      // 上次进程退出时中断的任务不可能再继续，标记为已中断
+      for (const r of transferStore.records) {
+        if (r.status === "running") {
+          r.status = "failed";
+          r.error = r.error || "网关重启导致传输中断";
+          r.verifyNote = r.verifyNote || "传输未完成，未校验";
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[transfer] 传输记录读取失败，将以空记录启动:", e.message);
+  }
+}
+
+// 防抖 + 原子替换写盘，避免每次进度更新都触发一次 I/O
+function scheduleTransferFlush() {
+  if (transferFlushTimer) return;
+  transferFlushTimer = setTimeout(() => {
+    transferFlushTimer = null;
+    flushTransferStore();
+  }, 400);
+}
+
+function flushTransferStore() {
+  try {
+    const tmp = TRANSFER_STORE_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(transferStore, null, 2));
+    fs.renameSync(tmp, TRANSFER_STORE_FILE);
+  } catch (e) {
+    console.warn("[transfer] 传输记录写入失败:", e.message);
+  }
+}
+
+// 按保留策略裁剪（0 = 全部保留，不做裁剪）
+function applyTransferRetention() {
+  const limit = Number(transferStore.settings.retention) || 0;
+  if (limit > 0 && transferStore.records.length > limit) {
+    transferStore.records = transferStore.records.slice(0, limit);
+  }
+}
+
+// 记录单次传输。返回记录对象，调用方持有引用后可直接改字段
+function createTransferRecord(fields) {
+  const record = {
+    id: `tf-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+    source: "gateway",
+    direction: fields.direction || "upload",
+    name: fields.name || "",
+    path: fields.path || "",
+    size: fields.size || 0,
+    doneBytes: 0,
+    status: "running",
+    progress: 0,
+    speed: "",
+    localHash: "",
+    deviceHash: "",
+    verified: null,
+    verifyNote: "传输中，尚未校验",
+    error: "",
+    createTime: Date.now(),
+    doneTime: null,
+    ...fields,
+  };
+  transferStore.records.unshift(record);
+  applyTransferRetention();
+  scheduleTransferFlush();
+  sseBroadcast("transfer/update", { id: record.id, status: record.status, progress: record.progress });
+  return record;
+}
+
+function finishTransferRecord(record, patch = {}) {
+  if (!record) return;
+  Object.assign(record, patch);
+  if (!record.doneTime) record.doneTime = Date.now();
+  if (record.status !== "running") record.progress = 100;
+  applyTransferRetention();
+  scheduleTransferFlush();
+  sseBroadcast("transfer/done", {
+    id: record.id,
+    status: record.status,
+    verified: record.verified,
+    name: record.name,
+  });
+}
+
+// 传输进度/速率的节流更新器：避免每个数据块都写盘与推送
+function createProgressTracker(record, totalBytes) {
+  let lastBytes = 0;
+  let lastAt = Date.now();
+  let lastEmit = 0;
+  return function onBytes(delta) {
+    if (!record) return;
+    record.doneBytes += delta;
+    const now = Date.now();
+    if (now - lastEmit < 250) return;
+    lastEmit = now;
+
+    const elapsed = (now - lastAt) / 1000;
+    if (elapsed > 0.2) {
+      const bps = (record.doneBytes - lastBytes) / elapsed;
+      record.speed = formatSpeed(bps);
+      lastBytes = record.doneBytes;
+      lastAt = now;
+    }
+    if (totalBytes > 0) {
+      record.progress = Math.min(99, Math.floor((record.doneBytes / totalBytes) * 100));
+    }
+    sseBroadcast("transfer/update", {
+      id: record.id,
+      status: record.status,
+      progress: record.progress,
+      speed: record.speed,
+      doneBytes: record.doneBytes,
+    });
+  };
+}
+
+function formatSpeed(bps) {
+  if (!bps || bps <= 0) return "";
+  const units = ["B/s", "KB/s", "MB/s", "GB/s"];
+  let v = bps;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
+loadTransferStore();
+
 // 2. 自动定位证书与 DID（DID 从证书文件名解析，无需硬编码）
 let DID = "";
 let cert = null;
@@ -854,7 +1001,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 2.2 /api/tasks 任务中心：上传/下载/复制/压缩/删除的进度与速率
+  // 2.2 /api/tasks 任务中心：NAS 内部任务 + 网关本地传输记录（含 Hash 校验明细）
   //
   // 官方 file-taskCenter 页的用法（从 index-DzZSkKO8.js 还原）：
   //   总览：get_task_status  { selector:[{key:"module",value:["filemgr"]}] }
@@ -865,8 +1012,57 @@ const server = http.createServer(async (req, res) => {
   //   detail.progress(0-100)、detail.speed(如 "1.2MB/s")、
   //   detail.total_size / handle_size、detail.total_files / handled_files、
   //   detail.err_code / err_msg、create_time / done_time
+  //
+  // 注意：NAS 只登记自己发起的内部任务。网页上传/下载对 NAS 只是普通 PUT/GET，
+  // 因此由网关用 transferStore 补记，这里合并成同一个列表返回，用 source 区分来源。
   if (pathname === "/api/tasks") {
-    const wantType = parsedUrl.searchParams.get("type") || ""; // '' | running | history
+    const wantType = parsedUrl.searchParams.get("type") || ""; // '' | running | history | status
+
+    // 网关传输记录是本地数据，必须与 NAS 可用性解耦：
+    // 隧道断开时 NAS 任务查不到，但这些记录仍要能查、能清、能复查 Hash。
+    const buildGwRecords = () => transferStore.records
+      .filter((rec) => {
+        if (wantType === "running") return rec.status === "running";
+        if (wantType === "history") return rec.status !== "running";
+        return true;
+      })
+      .map((rec) => ({
+        id: rec.id,
+        module: "gateway",
+        action: rec.direction,
+        status: rec.status,
+        srcType: "file",
+        src: rec.path ? [rec.path] : [],
+        name: rec.name,
+        srcCount: rec.path ? 1 : 0,
+        dst: "",
+        createTime: rec.createTime,
+        doneTime: rec.doneTime,
+        progress: rec.progress,
+        speed: rec.speed,
+        totalBytes: rec.size || null,
+        doneBytes: rec.doneBytes || null,
+        totalFiles: null,
+        handledFiles: null,
+        errCode: rec.error ? 1 : null,
+        errMsg: rec.error || "",
+        // 传输记录专属字段：任务中心据此渲染 Hash 复查明细
+        source: "gateway",
+        direction: rec.direction,
+        localHash: rec.localHash || "",
+        deviceHash: rec.deviceHash || "",
+        verified: rec.verified,
+        verifyNote: rec.verifyNote || "",
+      }));
+
+    const gwCounts = () => ({
+      transfer_running: transferStore.records.filter(x => x.status === "running").length,
+      transfer_success: transferStore.records.filter(x => x.status === "success").length,
+      transfer_failed: transferStore.records.filter(x => x.status === "failed").length,
+      transfer_total: transferStore.records.length,
+      retention: Number(transferStore.settings.retention) || 0,
+    });
+
     try {
       await ensureReady();
 
@@ -875,21 +1071,37 @@ const server = http.createServer(async (req, res) => {
 
       let list = [];
       if (wantType === "status") {
-        // 只取计数概览
-        const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_task_status", {
-          selector: [{ key: "module", value: ["filemgr"] }],
-        });
+        // 计数概览：NAS 内部任务 + 网关传输记录，两边都要报
+        let nasData = {};
+        try {
+          const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_task_status", {
+            selector: [{ key: "module", value: ["filemgr"] }],
+          });
+          nasData = r.data?.data || {};
+        } catch (nasErr) {
+          nasData = { nasUnavailable: true };
+        }
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ status: "ok", data: r.data?.data || {} }));
+        res.end(JSON.stringify({
+          status: "ok",
+          data: { ...nasData, ...gwCounts() },
+        }));
         return;
       }
 
-      const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_taskinfo", {
-        selector,
-        page: { size: 1000, id: 1 },
-      });
-      const d = r.data?.data || {};
-      list = Array.isArray(d.info) ? d.info : [];
+      // NAS 任务查询失败不应吞掉网关自己的传输记录
+      let nasFailed = false;
+      try {
+        const r = await callNasAPI("/cgi-bin/luci/taskcenter/get_taskinfo", {
+          selector,
+          page: { size: 1000, id: 1 },
+        });
+        const d = r.data?.data || {};
+        list = Array.isArray(d.info) ? d.info : [];
+      } catch (nasErr) {
+        nasFailed = true;
+        list = [];
+      }
 
       const mapped = list.map((t) => {
         const det = t.detail || {};
@@ -916,21 +1128,43 @@ const server = http.createServer(async (req, res) => {
           handledFiles: det.handled_files ?? null,
           errCode: det.err_code ?? null,
           errMsg: det.err_msg || "",
+          source: "nas",
         };
       });
+
+      // 合并网关侧的上传/下载记录，按时间倒序与 NAS 任务混排
+      const gwRecords = buildGwRecords();
+
+      const merged = [...gwRecords, ...mapped].sort(
+        (a, b) => (b.createTime || 0) - (a.createTime || 0)
+      );
 
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({
         status: "ok",
         data: {
-          tasks: mapped,
-          total: d.page?.total_task ?? mapped.length,
+          tasks: merged,
+          total: merged.length,
           type: wantType || "all",
+          ...gwCounts(),
+          nasUnavailable: nasFailed,
         },
       }));
     } catch (e) {
+      // 隧道/证书等前置失败时，仍把本地传输记录返回给前端
+      const gwRecords = buildGwRecords();
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ status: "error", message: e.message, data: { tasks: [] } }));
+      res.end(JSON.stringify({
+        status: "ok",
+        data: {
+          tasks: gwRecords,
+          total: gwRecords.length,
+          type: wantType || "all",
+          ...gwCounts(),
+          nasUnavailable: true,
+          message: e.message,
+        },
+      }));
     }
     return;
   }
@@ -967,6 +1201,44 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ status: "error", message: e.message, data: {} }));
     }
+    return;
+  }
+
+  // 2.25 /api/transfer/* 传输记录管理（清空历史 / 设置保留条数）
+  if (pathname === "/api/transfer/clear" && req.method === "POST") {
+    const cleared = transferStore.records.length;
+    transferStore.records = [];
+    flushTransferStore();
+    sseBroadcast("transfer/cleared", { cleared });
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({
+      status: "ok",
+      cleared,
+      message: `已清空 ${cleared} 条传输记录`,
+    }));
+    return;
+  }
+
+  if (pathname === "/api/transfer/retention" && req.method === "POST") {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => {
+      let retention = 0;
+      try {
+        retention = Number(JSON.parse(body).retention) || 0;
+      } catch (_) {}
+      if (retention < 0) retention = 0;
+      transferStore.settings.retention = retention;
+      applyTransferRetention();
+      flushTransferStore();
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        status: "ok",
+        retention,
+        remaining: transferStore.records.length,
+        message: retention === 0 ? "已设为全部保留" : `已设为仅保留最近 ${retention} 条`,
+      }));
+    });
     return;
   }
 
@@ -1608,6 +1880,15 @@ const server = http.createServer(async (req, res) => {
       const uploadTempFile = path.join(CACHE_DIR, `up_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.tmp`);
       const tempFsStream = fs.createWriteStream(uploadTempFile);
 
+      // 登记传输记录，用于任务中心展示进度与 Hash 复查明细
+      const uploadRecord = createTransferRecord({
+        direction: "upload",
+        name: filename,
+        path: destPath,
+        size: totalSize,
+      });
+      const trackUploadBytes = createProgressTracker(uploadRecord, totalSize);
+
       let responded = false;
       const finish = (status, payload) => {
         if (responded) return;
@@ -1646,6 +1927,14 @@ const server = http.createServer(async (req, res) => {
                 // 哈希不一致：表明文件在穿透传输中发生损坏或截断，删除损坏文件并拒绝判定完成！
                 console.error(`[upload校验失败] Hash 不匹配！删除脏文件: ${destPath}`);
                 try { await callWebdav("DELETE", destPath); } catch (_) {}
+                finishTransferRecord(uploadRecord, {
+                  status: "failed",
+                  localHash,
+                  deviceHash,
+                  verified: false,
+                  verifyNote: "哈希不一致，已自动回滚删除",
+                  error: "文件哈希校验失败（传输损坏）",
+                });
                 finish(409, {
                   status: "error",
                   code: "HASH_MISMATCH",
@@ -1656,33 +1945,62 @@ const server = http.createServer(async (req, res) => {
                 return;
               }
 
+              const matched = !!(deviceHash && localHash && deviceHash === localHash);
+              finishTransferRecord(uploadRecord, {
+                status: "success",
+                localHash,
+                deviceHash,
+                verified: matched,
+                verifyNote: matched
+                  ? "一致，文件完整"
+                  : (localHash || deviceHash ? "仅取得单边哈希，无法比对" : "未能取得哈希，未校验"),
+              });
               finish(200, {
                 status: "ok",
                 path: destPath,
                 size: totalSize,
                 hash: deviceHash || localHash,
-                verified: !!(deviceHash && localHash && deviceHash === localHash)
+                verified: matched
               });
             } catch (e) {
+              finishTransferRecord(uploadRecord, {
+                status: "success",
+                verified: null,
+                verifyNote: "校验流程异常，未完成比对",
+              });
               finish(200, { status: "ok", path: destPath, size: totalSize, verified: false });
             }
           });
         } else {
           const chunks = [];
           davRes.on("data", (d) => chunks.push(d));
-          davRes.on("end", () => finish(502, {
-            status: "error",
-            code: davRes.statusCode,
-            message: "NAS 拒绝上传: " + Buffer.concat(chunks).toString().substring(0, 200)
-          }));
+          davRes.on("end", () => {
+            const msg = "NAS 拒绝上传: " + Buffer.concat(chunks).toString().substring(0, 200);
+            finishTransferRecord(uploadRecord, {
+              status: "failed",
+              verified: null,
+              verifyNote: "上传被拒绝，未校验",
+              error: msg,
+            });
+            finish(502, { status: "error", code: davRes.statusCode, message: msg });
+          });
         }
       });
-      davReq.on("error", (e) => finish(502, { status: "error", message: "上传通道错误: " + e.message }));
+      davReq.on("error", (e) => {
+        finishTransferRecord(uploadRecord, {
+          status: "failed",
+          verified: null,
+          verifyNote: "上传通道错误，未校验",
+          error: "上传通道错误: " + e.message,
+        });
+        finish(502, { status: "error", message: "上传通道错误: " + e.message });
+      });
 
       // 浏览器请求流同时分流到 NAS WebDAV 和 本地临时计算文件
       req.on("data", (chunk) => {
         davReq.write(chunk);
         tempFsStream.write(chunk);
+        trackUploadBytes(chunk.length);
       });
       req.on("end", () => {
         davReq.end();
@@ -1690,6 +2008,12 @@ const server = http.createServer(async (req, res) => {
       req.on("error", (err) => {
         davReq.destroy();
         tempFsStream.destroy();
+        finishTransferRecord(uploadRecord, {
+          status: "failed",
+          verified: null,
+          verifyNote: "上传流中断，未校验",
+          error: "上传流传输中断: " + err.message,
+        });
         finish(500, { status: "error", message: "上传流传输中断: " + err.message });
       });
     } catch (e) {
@@ -1699,7 +2023,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 9.1 /api/download 文件下载 (WebDAV GET，注入 NAS 原生 XXH3 哈希头供下载完整性比对)
+  // 9.1 /api/download 文件下载 (WebDAV GET，注入 NAS 原生 XXH3 哈希头，并流式比对完整性)
   if (pathname === "/api/download") {
     const filePath = parsedUrl.searchParams.get("path") || "";
     if (!filePath) {
@@ -1724,6 +2048,35 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const isPartial = stream.statusCode === 206 || !!req.headers["range"];
+      const declaredSize = parseInt(stream.headers["content-length"] || "0", 10);
+
+      const downloadRecord = createTransferRecord({
+        direction: "download",
+        name: path.basename(filePath),
+        path: filePath,
+        size: isPartial ? 0 : declaredSize,
+        deviceHash: expectedHash || "",
+      });
+      const trackDownloadBytes = createProgressTracker(downloadRecord, declaredSize);
+
+      // 把下载字节流同步喂给 Python 做流式 XXH3 计算，避免大文件落盘
+      // 分片下载只拿到部分字节，整体哈希无意义，因此跳过比对
+      let hasher = null;
+      let hasherOut = "";
+      if (!isPartial) {
+        try {
+          hasher = spawn(getPythonBin(), [XXH3_SCRIPT, "-"]);
+          hasher.stdout.on("data", (d) => { hasherOut += d.toString(); });
+          hasher.on("error", (err) => {
+            console.warn("[download] 流式哈希进程异常:", err.message);
+            hasher = null;
+          });
+        } catch (e) {
+          hasher = null;
+        }
+      }
+
       const outHeaders = {
         "Content-Type": stream.headers["content-type"] || "application/octet-stream",
         "Accept-Ranges": "bytes",
@@ -1735,6 +2088,56 @@ const server = http.createServer(async (req, res) => {
         outHeaders["X-Checksum-Xxhash"] = expectedHash;
         outHeaders["X-Checksum-Algorithm"] = "xxhash3-64";
       }
+      // 供前端任务中心关联本次下载记录，便于即时刷新
+      outHeaders["X-Transfer-Id"] = downloadRecord.id;
+
+      stream.on("data", (chunk) => {
+        trackDownloadBytes(chunk.length);
+        if (hasher && hasher.stdin.writable) {
+          try { hasher.stdin.write(chunk); } catch (_) {}
+        }
+      });
+
+      stream.on("error", (err) => {
+        if (hasher && hasher.stdin.writable) { try { hasher.stdin.end(); } catch (_) {} }
+        finishTransferRecord(downloadRecord, {
+          status: "failed",
+          verified: null,
+          verifyNote: "下载流中断，未校验",
+          error: "下载流中断: " + err.message,
+        });
+      });
+
+      // 以响应真正写完后端为完成点，确保字节数统计到全量
+      res.on("finish", () => {
+        if (hasher && hasher.stdin.writable) {
+          try { hasher.stdin.end(); } catch (_) {}
+        }
+
+        const finalize = (localHash) => {
+          if (isPartial) {
+            finishTransferRecord(downloadRecord, {
+              status: "success",
+              verified: null,
+              verifyNote: "分片续传下载，未做整体校验",
+            });
+            return;
+          }
+          const matched = !!(localHash && expectedHash && localHash === expectedHash);
+          finishTransferRecord(downloadRecord, {
+            status: matched || (!expectedHash || !localHash) ? "success" : "failed",
+            localHash: localHash || "",
+            verified: matched ? true : (localHash && expectedHash ? false : null),
+            verifyNote: matched
+              ? "一致，文件完整"
+              : (localHash && expectedHash ? "不一致，疑似传输损坏" : "未能取得哈希，未校验"),
+            error: (localHash && expectedHash && !matched) ? "下载内容哈希与 NAS 不一致" : "",
+          });
+        };
+
+        if (!hasher) { finalize(""); return; }
+        hasher.on("close", () => finalize((hasherOut || "").trim().toLowerCase()));
+      });
 
       res.writeHead(stream.statusCode, outHeaders);
       stream.pipe(res);

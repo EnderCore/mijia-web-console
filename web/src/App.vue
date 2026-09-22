@@ -277,7 +277,7 @@
             <p v-else class="task-empty">未获取到详情</p>
           </div>
 
-          <!-- 任务中心视图：真实进度与速率，来自 taskcenter/get_taskinfo -->
+          <!-- 任务中心视图：NAS 内部任务 + 网关传输记录（含 Hash 复查明细） -->
           <div v-else-if="activeDialog.type === 'task'" class="task-view">
             <div class="task-tabs">
               <button
@@ -301,6 +301,39 @@
               <span>已停止 <b>{{ taskSummary.stop_cnt ?? 0 }}</b></span>
             </div>
 
+            <!-- NAS 任务查询不可用时如实说明，避免误判为「没有任务」 -->
+            <p v-if="nasTasksUnavailable" class="task-warn">
+              ⚠️ 暂时无法读取 NAS 内部任务（隧道未连接），以下仅显示网关记录的网页传输。
+            </p>
+
+            <!-- 传输记录管理：保留策略与手动清空 -->
+            <div class="transfer-bar">
+              <span class="tb-label">
+                网页传输记录 <b>{{ taskSummary?.transfer_total ?? 0 }}</b> 条
+              </span>
+              <label class="tb-retention">
+                保留
+                <select
+                  class="tb-select"
+                  :value="retentionSetting"
+                  :disabled="retentionSaving"
+                  @change="changeRetention($event.target.value)"
+                >
+                  <option :value="0">全部保留</option>
+                  <option :value="500">最近 500 条</option>
+                  <option :value="200">最近 200 条</option>
+                  <option :value="100">最近 100 条</option>
+                </select>
+              </label>
+              <button
+                class="tb-clear"
+                :disabled="transferClearing || (taskSummary?.transfer_total ?? 0) === 0"
+                @click="clearTransferHistory"
+              >
+                {{ transferClearing ? '清理中…' : '清空传输历史' }}
+              </button>
+            </div>
+
             <p v-if="taskError" class="task-empty">{{ taskError }}</p>
             <p v-else-if="!taskLoading && tasks.length === 0" class="task-empty">
               暂无任务记录
@@ -310,6 +343,10 @@
               <div v-for="t in tasks" :key="t.id" class="task-card">
                 <div class="t-top">
                   <span class="t-name" :title="t.src[0] || t.name">
+                    <!-- 来源徽标：区分网关本地传输与 NAS 内部任务 -->
+                    <span class="t-origin" :class="t.source === 'gateway' ? 'gw' : 'nas'">
+                      {{ t.source === 'gateway' ? (t.direction === 'download' ? '↓ 下载' : '↑ 上传') : 'NAS' }}
+                    </span>
                     {{ t.name || '(未知文件)' }}
                     <template v-if="t.srcCount > 1">等 {{ t.srcCount }} 项</template>
                   </span>
@@ -328,6 +365,22 @@
                   <span v-if="t.speed">{{ t.speed }}</span>
                   <span v-if="t.totalFiles != null">{{ t.handledFiles ?? 0 }}/{{ t.totalFiles }} 个文件</span>
                   <span v-if="t.errMsg && t.errCode">{{ t.errMsg }}</span>
+                </div>
+
+                <!-- Hash 复查明细：仅传输记录有，供人工比对两端哈希 -->
+                <div v-if="t.source === 'gateway'" class="t-hash">
+                  <div class="th-row">
+                    <span class="th-k">网关计算</span>
+                    <span class="th-v">{{ t.localHash || '—' }}</span>
+                  </div>
+                  <div class="th-row">
+                    <span class="th-k">NAS 返回</span>
+                    <span class="th-v">{{ t.deviceHash || '—' }}</span>
+                  </div>
+                  <div class="th-verdict" :class="verifyClass(t.verified)">
+                    {{ verifyLabel(t.verified) }}
+                    <span v-if="t.verifyNote" class="th-note">· {{ t.verifyNote }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -569,6 +622,16 @@ function pushNotification(text) {
   }, 8000);
 }
 
+/** 传输进度事件很密集，节流刷新任务列表避免打爆网关 */
+let taskRefreshTimer = null;
+function scheduleTaskRefresh() {
+  if (taskRefreshTimer) return;
+  taskRefreshTimer = setTimeout(() => {
+    taskRefreshTimer = null;
+    if (activeDialog.value?.type === 'task') loadTasks(taskTab.value);
+  }, 600);
+}
+
 function handleMqttEvent(topic, data) {
   if (topic === 'gateway/hello') {
     mqttConnected.value = !!data?.mqtt;
@@ -583,6 +646,26 @@ function handleMqttEvent(topic, data) {
     // 文件操作完成 → 任务中心开着就刷新
     if (activeDialog.value?.type === 'task') loadTasks(taskTab.value);
     pushNotification('📁 文件任务有更新');
+    return;
+  }
+  // 网关上传/下载的实时进度与完成事件；任务中心打开时增量刷新，
+  // 关着则只在完成时提示，避免进度事件频繁打断用户
+  if (topic === 'transfer/update') {
+    if (activeDialog.value?.type === 'task') scheduleTaskRefresh();
+    return;
+  }
+  if (topic === 'transfer/done') {
+    if (activeDialog.value?.type === 'task') {
+      loadTasks(taskTab.value);
+    } else {
+      const ok = data?.verified;
+      const tag = data?.status === 'failed' ? '⚠️ 传输异常' : (ok === true ? '✅ 校验通过' : '📦 传输完成');
+      pushNotification(`${tag}：${data?.name || ''}`);
+    }
+    return;
+  }
+  if (topic === 'transfer/cleared') {
+    if (activeDialog.value?.type === 'task') loadTasks(taskTab.value);
     return;
   }
   if (topic.endsWith('/disk')) {
@@ -859,7 +942,7 @@ async function loadAllData() {
 }
 
 // 小程序呼出与交互处理
-// ===== 任务中心（真实数据，来自 taskcenter/get_taskinfo）=====
+// ===== 任务中心（NAS taskcenter 内部任务 + 网关上传/下载传输记录）=====
 const taskTabs = [
   { key: 'running', name: '进行中' },
   { key: 'history', name: '历史' },
@@ -869,16 +952,24 @@ const tasks = ref([]);
 const taskSummary = ref(null);
 const taskLoading = ref(false);
 const taskError = ref('');
+// NAS 任务查询是否因隧道不可用而降级（此时列表只有网关传输记录）
+const nasTasksUnavailable = ref(false);
+// 传输记录保留策略：0 = 全部保留（默认）
+const retentionSetting = ref(0);
+const retentionSaving = ref(false);
+const transferClearing = ref(false);
 
 async function loadTasks(type = taskTab.value) {
   taskLoading.value = true;
   taskError.value = '';
   try {
-    // 任务列表
+    // 任务列表（NAS 内部任务 + 网关传输记录已在网关侧合并）
     const res = await fetch(`/api/tasks?type=${encodeURIComponent(type)}`);
     const data = await res.json();
     if (data.status === 'ok') {
       tasks.value = data.data?.tasks || [];
+      nasTasksUnavailable.value = !!data.data?.nasUnavailable;
+      if (data.data?.retention !== undefined) retentionSetting.value = Number(data.data.retention) || 0;
     } else {
       tasks.value = [];
       taskError.value = data.message || '任务查询失败';
@@ -886,7 +977,10 @@ async function loadTasks(type = taskTab.value) {
     // 计数概览
     const sres = await fetch('/api/tasks?type=status');
     const sdata = await sres.json();
-    if (sdata.status === 'ok') taskSummary.value = sdata.data || null;
+    if (sdata.status === 'ok') {
+      taskSummary.value = sdata.data || null;
+      if (sdata.data?.retention !== undefined) retentionSetting.value = Number(sdata.data.retention) || 0;
+    }
   } catch (e) {
     tasks.value = [];
     taskError.value = '无法连接网关: ' + e.message;
@@ -898,6 +992,59 @@ async function loadTasks(type = taskTab.value) {
 function switchTaskTab(key) {
   taskTab.value = key;
   loadTasks(key);
+}
+
+/** 切换传输记录的保留条数；0 表示全部保留 */
+async function changeRetention(value) {
+  retentionSaving.value = true;
+  try {
+    const res = await fetch('/api/transfer/retention', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ retention: Number(value) || 0 }),
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      retentionSetting.value = data.retention;
+      pushNotification(data.message || '保留策略已更新');
+      await loadTasks(taskTab.value);
+    }
+  } catch (e) {
+    pushNotification('保留策略保存失败: ' + e.message);
+  } finally {
+    retentionSaving.value = false;
+  }
+}
+
+/** 手动清空全部网页传输历史（不影响 NAS 上的文件） */
+async function clearTransferHistory() {
+  if (!window.confirm('确定清空全部网页传输记录吗？这不会删除 NAS 上的任何文件。')) return;
+  transferClearing.value = true;
+  try {
+    const res = await fetch('/api/transfer/clear', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      pushNotification(data.message || '已清空传输记录');
+      await loadTasks(taskTab.value);
+    }
+  } catch (e) {
+    pushNotification('清空失败: ' + e.message);
+  } finally {
+    transferClearing.value = false;
+  }
+}
+
+/** Hash 校验结论的徽标样式 */
+function verifyClass(verified) {
+  if (verified === true) return 'ok';
+  if (verified === false) return 'bad';
+  return 'unknown';
+}
+
+function verifyLabel(verified) {
+  if (verified === true) return '✓ 两端哈希一致，文件完整';
+  if (verified === false) return '✗ 哈希不一致，内容可能损坏';
+  return '— 未完成比对';
 }
 
 function taskActionText(a) {
@@ -1762,6 +1909,149 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 8px;
+}
+
+/* ===== NAS 不可用提示 ===== */
+.task-warn {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--mi-radius-sm);
+  background: var(--mi-status-orange-soft, var(--mi-control-sub-bg));
+  color: var(--mi-status-orange, var(--mi-text-sub));
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ===== 传输记录管理条（保留策略 + 清空）===== */
+.transfer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--mi-radius-md);
+  background: var(--mi-card-sub-bg);
+  border: 1px solid var(--mi-border);
+  font-size: 12px;
+  color: var(--mi-text-sub);
+}
+
+.tb-label b {
+  color: var(--mi-text-main);
+}
+
+.tb-retention {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tb-select {
+  border: 1px solid var(--mi-border);
+  background: var(--mi-control-bg);
+  color: var(--mi-text-main);
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.tb-clear {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--mi-radius-sm);
+  border: 1px solid var(--mi-status-red);
+  background: var(--mi-status-red-soft);
+  color: var(--mi-status-red);
+}
+
+.tb-clear:hover:not(:disabled) {
+  background: var(--mi-status-red);
+  color: var(--mi-on-danger-solid, var(--mi-card-bg));
+}
+
+.tb-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ===== 来源徽标 ===== */
+.t-origin {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.t-origin.gw {
+  background: var(--mi-accent-soft);
+  color: var(--mi-accent-text-on-soft, var(--mi-orange));
+}
+
+.t-origin.nas {
+  background: var(--mi-control-sub-bg);
+  color: var(--mi-text-sub);
+}
+
+/* ===== Hash 复查明细 ===== */
+.t-hash {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mi-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.th-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.th-k {
+  color: var(--mi-text-sub);
+  flex-shrink: 0;
+}
+
+.th-v {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--mi-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-verdict {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.th-verdict.ok {
+  color: var(--mi-status-green);
+}
+
+.th-verdict.bad {
+  color: var(--mi-status-red);
+}
+
+.th-verdict.unknown {
+  color: var(--mi-text-sub);
+  font-weight: 500;
+}
+
+.th-note {
+  font-weight: 400;
+  color: var(--mi-text-sub);
 }
 
 .t-prog {
