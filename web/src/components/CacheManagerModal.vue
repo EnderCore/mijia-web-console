@@ -1,171 +1,177 @@
 <template>
-  <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
-    <div class="custom-modal cache-modal mi-surface">
-      <!-- 模态框顶部 -->
-      <div class="cache-hdr">
-        <div class="hdr-left">
-          <div class="hdr-badge-icon">💾</div>
-          <div class="hdr-text">
-            <h4>本地缓存管理</h4>
-            <p>查看并清理浏览器中缓存的设备数据、壁纸与离线副本</p>
-          </div>
-        </div>
-        <button class="close-x" @click="$emit('close')" title="关闭">✕</button>
-      </div>
-
-      <!-- 总量概览 -->
-      <div class="cache-body">
-        <div class="overview-card">
-          <div class="ov-main">
-            <span class="ov-value">{{ formatBytes(stats.totalBytes) }}</span>
-            <span class="ov-label">当前缓存占用</span>
-          </div>
-          <div class="ov-meta">
-            <div class="meta-row">
-              <span class="meta-k">缓存条目</span>
-              <span class="meta-v">{{ stats.items.length }} 项</span>
-            </div>
-            <div class="meta-row" v-if="quota">
-              <span class="meta-k">浏览器配额</span>
-              <span class="meta-v">
-                {{ formatBytes(quota.usage) }} / {{ formatBytes(quota.quota) }}
-              </span>
+  <Transition name="mi-modal">
+    <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
+      <div class="custom-modal cache-modal mi-surface">
+        <!-- 模态框顶部 -->
+        <div class="cache-hdr">
+          <div class="hdr-left">
+            <div class="hdr-badge-icon">💾</div>
+            <div class="hdr-text">
+              <h4>本地缓存管理</h4>
+              <p>查看并清理浏览器中缓存的设备数据、壁纸与离线副本</p>
             </div>
           </div>
+          <button class="close-x" @click="$emit('close')" title="关闭">✕</button>
         </div>
 
-        <!-- 分类占用 -->
-        <div class="section-card" v-if="categoryList.length">
-          <div class="sc-title">分类占用</div>
-          <div class="cat-list">
-            <div v-for="c in categoryList" :key="c.name" class="cat-row">
-              <span class="cat-name">{{ c.name }}</span>
-              <div class="cat-bar-track">
-                <div
-                  class="cat-bar-fill"
-                  :style="{ width: c.percent + '%' }"
-                ></div>
+        <!-- 总量概览 -->
+        <div class="cache-body">
+          <div class="overview-card">
+            <div class="ov-main">
+              <span class="ov-value">{{ formatBytes(stats.totalBytes) }}</span>
+              <span class="ov-label">当前缓存占用</span>
+            </div>
+            <div class="ov-meta">
+              <div class="meta-row">
+                <span class="meta-k">缓存条目</span>
+                <span class="meta-v">{{ stats.items.length }} 项</span>
               </div>
-              <span class="cat-size">{{ formatBytes(c.bytes) }}</span>
+              <div class="meta-row" v-if="quota">
+                <span class="meta-k">浏览器配额</span>
+                <span class="meta-v">
+                  {{ formatBytes(quota.usage) }} / {{ formatBytes(quota.quota) }}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 服务端缩略图磁盘缓存 (server/cache) 与强缓存击穿管理 -->
-        <div class="section-card server-cache-card">
-          <div class="sc-header-row">
+          <!-- 分类占用 -->
+          <div class="section-card" v-if="categoryList.length">
+            <div class="sc-title">分类占用</div>
+            <div class="cat-list">
+              <div v-for="c in categoryList" :key="c.name" class="cat-row">
+                <span class="cat-name">{{ c.name }}</span>
+                <div class="cat-bar-track">
+                  <div
+                    class="cat-bar-fill"
+                    :style="{ width: c.percent + '%' }"
+                  ></div>
+                </div>
+                <span class="cat-size">{{ formatBytes(c.bytes) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 服务端缩略图磁盘缓存 (server/cache) 与强缓存击穿管理 -->
+          <div class="section-card server-cache-card">
+            <div class="sc-header-row">
+              <div class="sc-title">
+                🖼️ 服务端缩略图磁盘缓存
+                <span class="sc-hint font-mono">server/cache</span>
+              </div>
+              <button
+                class="sc-refresh-btn"
+                :disabled="loadingServerCache"
+                @click="refreshServerCache"
+                title="重新读取服务端磁盘统计"
+              >
+                {{ loadingServerCache ? '扫描中…' : '🔄 刷新统计' }}
+              </button>
+            </div>
+
+            <div class="server-cache-stats-grid">
+              <div class="sc-stat-pill mi-surface">
+                <span class="label">缩略图与转码总占用</span>
+                <span class="val highlight">{{ formatBytes(serverStats.totalBytes) }}</span>
+              </div>
+              <div class="sc-stat-pill mi-surface">
+                <span class="label">缓存文件总量</span>
+                <span class="val">{{ serverStats.totalFiles }} 项</span>
+              </div>
+              <div class="sc-stat-pill mi-surface">
+                <span class="label">WebDAV 缩略图 (.img)</span>
+                <span class="val">{{ serverStats.byCategory?.thumbnails?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.thumbnails?.bytes) }})</span>
+              </div>
+              <div class="sc-stat-pill mi-surface">
+                <span class="label">HEIC 转码副本 (.jpg)</span>
+                <span class="val">{{ serverStats.byCategory?.transcoded?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.transcoded?.bytes) }})</span>
+              </div>
+            </div>
+
+            <div class="server-cache-actions">
+              <div class="server-action-desc">
+                <p>从 NAS 实时拉取的缩略图会在此落盘。若遇到缩略图不更新或显示异常，可清理此处并自动击穿浏览器 HTTP 磁盘缓存。</p>
+                <label class="danger-check">
+                  <input type="checkbox" v-model="includeIcons" />
+                  <span>同时清理原厂应用/系统图标缓存 (.png)</span>
+                </label>
+              </div>
+              <button
+                class="server-clear-btn"
+                :disabled="clearingServer || serverStats.totalFiles === 0"
+                @click="doClearServerCache"
+              >
+                {{ clearingServer ? '正在安全清理…' : '🗑️ 一键清空缩略图缓存' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 明细列表 -->
+          <div class="section-card">
             <div class="sc-title">
-              🖼️ 服务端缩略图磁盘缓存
-              <span class="sc-hint font-mono">server/cache</span>
+              缓存明细
+              <span class="sc-hint">点击右侧按钮可单独清除</span>
             </div>
-            <button
-              class="sc-refresh-btn"
-              :disabled="loadingServerCache"
-              @click="refreshServerCache"
-              title="重新读取服务端磁盘统计"
-            >
-              {{ loadingServerCache ? '扫描中…' : '🔄 刷新统计' }}
+
+            <div v-if="stats.items.length === 0" class="empty-hint">
+              暂无本地缓存数据
+            </div>
+
+            <!-- 单项清除时让条目自己收缩退场，而不是整行瞬间消失、下方内容跳上来 -->
+            <TransitionGroup v-else name="mi-collapse" tag="div" class="item-list">
+              <div
+                v-for="it in stats.items"
+                :key="it.id"
+                class="cache-item"
+                :class="{ removing: removingId === it.id }"
+              >
+                <div class="item-main">
+                  <span class="item-name">{{ it.name }}</span>
+                  <span class="item-tag">{{ it.category }}</span>
+                </div>
+                <div class="item-right">
+                  <span class="item-size">{{ formatBytes(it.bytes) }}</span>
+                  <button
+                    class="item-del"
+                    :disabled="removingId === it.id"
+                    @click="removeItem(it)"
+                  >{{ removingId === it.id ? '清除中…' : '清除' }}</button>
+                </div>
+              </div>
+            </TransitionGroup>
+          </div>
+
+          <!-- 危险操作区：清空全部。壁纸属于用户作品，单独勾选 -->
+          <div class="danger-card">
+            <div class="danger-text">
+              <strong>清空全部缓存</strong>
+              <p>清除后再次打开页面会重新从 NAS 拉取数据，不影响 NAS 上的任何文件。</p>
+              <div class="danger-check-group">
+                <label class="danger-check">
+                  <input type="checkbox" v-model="includeServerCacheInAll" />
+                  <span>包含服务端缩略图磁盘缓存 (server/cache)</span>
+                </label>
+                <label class="danger-check">
+                  <input type="checkbox" v-model="includeWallpaper" />
+                  <span>同时删除自定义壁纸（不可恢复，需重新上传）</span>
+                </label>
+              </div>
+            </div>
+            <button class="danger-btn" :disabled="clearing || (stats.items.length === 0 && serverStats.totalFiles === 0)" @click="doClearAll">
+              {{ clearing ? '清理中…' : '清空缓存' }}
             </button>
           </div>
 
-          <div class="server-cache-stats-grid">
-            <div class="sc-stat-pill mi-surface">
-              <span class="label">缩略图与转码总占用</span>
-              <span class="val highlight">{{ formatBytes(serverStats.totalBytes) }}</span>
+          <!-- 操作结果提示：轮换出现时有进出场，避免文字硬替换 -->
+          <Transition name="mi-swap">
+            <div v-if="notice" class="notice" :class="{ error: noticeError }">
+              {{ notice }}
             </div>
-            <div class="sc-stat-pill mi-surface">
-              <span class="label">缓存文件总量</span>
-              <span class="val">{{ serverStats.totalFiles }} 项</span>
-            </div>
-            <div class="sc-stat-pill mi-surface">
-              <span class="label">WebDAV 缩略图 (.img)</span>
-              <span class="val">{{ serverStats.byCategory?.thumbnails?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.thumbnails?.bytes) }})</span>
-            </div>
-            <div class="sc-stat-pill mi-surface">
-              <span class="label">HEIC 转码副本 (.jpg)</span>
-              <span class="val">{{ serverStats.byCategory?.transcoded?.count || 0 }} 项 ({{ formatBytes(serverStats.byCategory?.transcoded?.bytes) }})</span>
-            </div>
-          </div>
-
-          <div class="server-cache-actions">
-            <div class="server-action-desc">
-              <p>从 NAS 实时拉取的缩略图会在此落盘。若遇到缩略图不更新或显示异常，可清理此处并自动击穿浏览器 HTTP 磁盘缓存。</p>
-              <label class="danger-check">
-                <input type="checkbox" v-model="includeIcons" />
-                <span>同时清理原厂应用/系统图标缓存 (.png)</span>
-              </label>
-            </div>
-            <button
-              class="server-clear-btn"
-              :disabled="clearingServer || serverStats.totalFiles === 0"
-              @click="doClearServerCache"
-            >
-              {{ clearingServer ? '正在安全清理…' : '🗑️ 一键清空缩略图缓存' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 明细列表 -->
-        <div class="section-card">
-          <div class="sc-title">
-            缓存明细
-            <span class="sc-hint">点击右侧按钮可单独清除</span>
-          </div>
-
-          <div v-if="stats.items.length === 0" class="empty-hint">
-            暂无本地缓存数据
-          </div>
-
-          <div v-else class="item-list">
-            <div
-              v-for="it in stats.items"
-              :key="it.id"
-              class="cache-item"
-              :class="{ removing: removingId === it.id }"
-            >
-              <div class="item-main">
-                <span class="item-name">{{ it.name }}</span>
-                <span class="item-tag">{{ it.category }}</span>
-              </div>
-              <div class="item-right">
-                <span class="item-size">{{ formatBytes(it.bytes) }}</span>
-                <button
-                  class="item-del"
-                  :disabled="removingId === it.id"
-                  @click="removeItem(it)"
-                >{{ removingId === it.id ? '清除中…' : '清除' }}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 危险操作区：清空全部。壁纸属于用户作品，单独勾选 -->
-        <div class="danger-card">
-          <div class="danger-text">
-            <strong>清空全部缓存</strong>
-            <p>清除后再次打开页面会重新从 NAS 拉取数据，不影响 NAS 上的任何文件。</p>
-            <div class="danger-check-group">
-              <label class="danger-check">
-                <input type="checkbox" v-model="includeServerCacheInAll" />
-                <span>包含服务端缩略图磁盘缓存 (server/cache)</span>
-              </label>
-              <label class="danger-check">
-                <input type="checkbox" v-model="includeWallpaper" />
-                <span>同时删除自定义壁纸（不可恢复，需重新上传）</span>
-              </label>
-            </div>
-          </div>
-          <button class="danger-btn" :disabled="clearing || (stats.items.length === 0 && serverStats.totalFiles === 0)" @click="doClearAll">
-            {{ clearing ? '清理中…' : '清空缓存' }}
-          </button>
-        </div>
-
-        <div v-if="notice" class="notice" :class="{ error: noticeError }">
-          {{ notice }}
+          </Transition>
         </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>

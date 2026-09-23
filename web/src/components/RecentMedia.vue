@@ -40,11 +40,14 @@
 
     <!-- 媒体真实缩略图瀑布流 (真图片预览 + 视频时长播放标记) -->
     <div v-else>
-      <div class="media-grid">
+      <!-- 按筛选条件与页大小重建容器：切换「全部/照片/视频」时级联动画重新播放，
+           否则 Vue 复用旧节点，新一批卡片会直接顶替上去，看起来是硬切。 -->
+      <div class="media-grid" :key="`${currentTab}-${pageSize}`">
         <div
-          v-for="file in pagedFiles"
+          v-for="(file, idx) in pagedFiles"
           :key="file.id || file.name"
           class="media-item"
+          :style="{ '--i': idx % 12 }"
           v-smart-preload="file.thumbnail"
           @click="$emit('preview-media', file)"
         >
@@ -53,7 +56,7 @@
             <img
               :src="file.thumbnail"
               :alt="file.name"
-              class="media-img"
+              class="media-img mi-img-in"
               loading="lazy"
             />
 
@@ -274,6 +277,11 @@ function formatDate(timestamp) {
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  /* 瀑布流逐项淡入；--i 由模板注入，取模避免长列表延迟过长。
+     用 backwards 而不是 both：both 会让动画结束帧的 transform 一直生效，
+     把下面的 :hover translateY 顶掉，卡片就再也浮不起来了。 */
+  animation: miRiseIn var(--mi-dur-slow) var(--mi-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
 }
 
 .media-item:hover {

@@ -52,23 +52,25 @@
     <!-- 主界面内容区 (仿米家卡片式极简布局) -->
     <main class="main-content">
       <!-- 实时推送通知条（MQTT 经 SSE 转发） -->
-      <div v-if="notifications.length" class="notify-stack">
+      <TransitionGroup name="mi-notify" tag="div" class="notify-stack">
         <div v-for="n in notifications" :key="n.ts + n.text" class="notify-item">{{ n.text }}</div>
-      </div>
+      </TransitionGroup>
 
       <!-- 离线提示横幅 -->
-      <div v-if="!isOnline" class="offline-banner">
-        <div class="banner-content">
-          <span class="banner-icon">⚠️</span>
-          <div class="banner-text">
-            <strong>未连接到 NAS</strong>
-            <span>{{ statusInfo.message || '请确认小米智能存储官方客户端已在后台运行并登录。' }}</span>
+      <Transition name="mi-swap">
+        <div v-if="!isOnline" class="offline-banner">
+          <div class="banner-content">
+            <span class="banner-icon">⚠️</span>
+            <div class="banner-text">
+              <strong>未连接到 NAS</strong>
+              <span>{{ statusInfo.message || '请确认小米智能存储官方客户端已在后台运行并登录。' }}</span>
+            </div>
           </div>
+          <button class="retry-btn" @click="loadAllData" :disabled="refreshing">
+            {{ refreshing ? '探测中...' : '重新连接' }}
+          </button>
         </div>
-        <button class="retry-btn" @click="loadAllData" :disabled="refreshing">
-          {{ refreshing ? '探测中...' : '重新连接' }}
-        </button>
-      </div>
+      </Transition>
 
       <!-- 核心仪表盘网格 -->
       <div class="dashboard-grid">
@@ -179,207 +181,211 @@
       @changed="loadAllData"
     />
 
-    <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
-      <div class="custom-modal mi-surface">
-        <div class="modal-hdr">
-          <div class="modal-hdr-title">
-            <span class="hdr-icon">{{ activeDialog.icon || '📱' }}</span>
-            <h4>{{ activeDialog.title }}</h4>
-          </div>
-          <button class="close-x" @click="activeDialog = null">✕</button>
-        </div>
-        <div class="modal-cnt">
-          <p class="modal-desc">{{ activeDialog.desc }}</p>
-
-          <!-- 小程序列表展示 -->
-          <div v-if="activeDialog.items" class="modal-list-box">
-            <div v-for="(item, idx) in activeDialog.items" :key="idx" class="modal-list-item">
-              <div class="item-info">
-                <span class="item-title">{{ item.name }}</span>
-                <span class="item-sub" v-if="item.sub">{{ item.sub }}</span>
-              </div>
-              <span class="item-detail">{{ item.detail }}</span>
+    <Transition name="mi-modal">
+      <div v-if="activeDialog" class="modal-backdrop" @click.self="activeDialog = null">
+        <div class="custom-modal mi-surface">
+          <div class="modal-hdr">
+            <div class="modal-hdr-title">
+              <span class="hdr-icon">{{ activeDialog.icon || '📱' }}</span>
+              <h4>{{ activeDialog.title }}</h4>
             </div>
+            <button class="close-x" @click="activeDialog = null">✕</button>
           </div>
+          <!-- key 绑定视图类型：切换设置/相册/历史/任务时重建节点，
+               让 .modal-cnt 的进场动画重新播放，而不是内容硬切 -->
+          <div class="modal-cnt" :key="activeDialog.type || 'list'">
+            <p class="modal-desc">{{ activeDialog.desc }}</p>
 
-          <!-- 系统设置视图：能力开关 + 电源/升级/SMB 真实只读数据 -->
-          <div v-else-if="activeDialog.type === 'settings'" class="settings-view">
-            <div class="set-row"><span>电源状态</span><b>{{ sysExtra.power || '未上报' }}</b></div>
-            <div class="set-row"><span>固件版本</span><b>{{ systemHardwareInfo.system?.version || '未上报' }}</b></div>
-            <div class="set-row"><span>升级状态</span><b>{{ upgradeText }}</b></div>
-            <div class="set-row"><span>SMB 服务名</span><b>{{ sysExtra.sambaName || '未上报' }}</b></div>
-            <div class="set-row"><span>SMBv1 兼容</span><b>{{ sysExtra.sambaV1 == null ? '未上报' : (sysExtra.sambaV1 ? '已开启' : '已关闭') }}</b></div>
-            <div class="set-row"><span>风扇调速接口</span><b>{{ featureEnabled('mifan','fan_mode') ? '支持' : '本机不支持 (fan_mode:0)' }}</b></div>
-            <div class="set-row"><span>迅雷插件</span><b>{{ featureEnabled('plugincenter','plugin_xunlei') ? '已启用' : '未启用' }}</b></div>
-            <p class="unavailable-note">
-              以上为 NAS 只读查询结果；风扇策略 / SMB / 休眠的修改接口按当前约束未接入，
-              请使用小米智能存储官方客户端进行配置。
-            </p>
-          </div>
+            <!-- 小程序列表展示 -->
+            <div v-if="activeDialog.items" class="modal-list-box">
+              <div v-for="(item, idx) in activeDialog.items" :key="idx" class="modal-list-item">
+                <div class="item-info">
+                  <span class="item-title">{{ item.name }}</span>
+                  <span class="item-sub" v-if="item.sub">{{ item.sub }}</span>
+                </div>
+                <span class="item-detail">{{ item.detail }}</span>
+              </div>
+            </div>
 
-          <!-- 相册视图：真实 album/list_album + list_member -->
-          <div v-else-if="activeDialog.type === 'album'" class="album-view">
-            <div class="album-head">
-              <div class="album-list">
+            <!-- 系统设置视图：能力开关 + 电源/升级/SMB 真实只读数据 -->
+            <div v-else-if="activeDialog.type === 'settings'" class="settings-view">
+              <div class="set-row"><span>电源状态</span><b>{{ sysExtra.power || '未上报' }}</b></div>
+              <div class="set-row"><span>固件版本</span><b>{{ systemHardwareInfo.system?.version || '未上报' }}</b></div>
+              <div class="set-row"><span>升级状态</span><b>{{ upgradeText }}</b></div>
+              <div class="set-row"><span>SMB 服务名</span><b>{{ sysExtra.sambaName || '未上报' }}</b></div>
+              <div class="set-row"><span>SMBv1 兼容</span><b>{{ sysExtra.sambaV1 == null ? '未上报' : (sysExtra.sambaV1 ? '已开启' : '已关闭') }}</b></div>
+              <div class="set-row"><span>风扇调速接口</span><b>{{ featureEnabled('mifan','fan_mode') ? '支持' : '本机不支持 (fan_mode:0)' }}</b></div>
+              <div class="set-row"><span>迅雷插件</span><b>{{ featureEnabled('plugincenter','plugin_xunlei') ? '已启用' : '未启用' }}</b></div>
+              <p class="unavailable-note">
+                以上为 NAS 只读查询结果；风扇策略 / SMB / 休眠的修改接口按当前约束未接入，
+                请使用小米智能存储官方客户端进行配置。
+              </p>
+            </div>
+
+            <!-- 相册视图：真实 album/list_album + list_member -->
+            <div v-else-if="activeDialog.type === 'album'" class="album-view">
+              <div class="album-head">
+                <div class="album-list">
+                  <button
+                    v-for="a in albumList" :key="a.album_uuid"
+                    class="album-item" :class="{ active: activeAlbum === a.album_uuid }"
+                    @click="selectAlbum(a)"
+                  >
+                    <span class="a-name">{{ albumDisplayName(a) }}</span>
+                    <span class="a-count">{{ a.photo_count + a.video_count }} 项</span>
+                  </button>
+                </div>
+                <div class="album-photos">
+                  <p v-if="albumLoading" class="task-empty">加载中…</p>
+                  <p v-else-if="albumError" class="task-empty">{{ albumError }}</p>
+                  <p v-else-if="albumPhotos.length === 0" class="task-empty">该相册暂无内容</p>
+                  <div v-else class="album-grid">
+                    <div v-for="p in albumPhotos" :key="p.member_id" class="aph" @click="openAlbumPhoto(p)">
+                      <img :src="`/api/thumbnail?path=${encodeURIComponent(p.path)}&size=small`" :alt="p.name" loading="lazy" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 最近打开历史视图 -->
+            <div v-else-if="activeDialog.type === 'openHistory'" class="task-view">
+              <p v-if="histLoading" class="task-empty">加载中…</p>
+              <p v-else-if="openHistory.length === 0" class="task-empty">暂无最近打开记录</p>
+              <div v-else class="task-list">
+                <div v-for="(h, i) in openHistory" :key="i" class="task-card hist-card" @click="openHistoryFile(h)">
+                  <div class="t-top">
+                    <span class="t-name" :title="h.parent + '/' + h.name">{{ h.name }}</span>
+                    <span class="t-status text-muted">{{ formatDate(h.access_time) }}</span>
+                  </div>
+                  <div class="t-bot">
+                    <span>{{ mask(h.parent, 'path') }}</span>
+                    <span>{{ formatSize(h.size) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 文件详情视图 -->
+            <div v-else-if="activeDialog.type === 'fileDetail'" class="task-view">
+              <div v-if="detailInfo" class="detail-grid">
+                <div class="d-row"><span>文件名</span><b>{{ detailInfo.name }}</b></div>
+                <div class="d-row"><span>类型</span><b>{{ detailInfo.type || '文件' }}</b></div>
+                <div class="d-row"><span>大小</span><b>{{ formatSize(detailInfo.size) }}</b></div>
+                <div class="d-row"><span>修改时间</span><b>{{ formatDate(detailInfo.modified_time) }}</b></div>
+                <div class="d-row"><span>创建时间</span><b>{{ formatDate(detailInfo.create_time) }}</b></div>
+                <div class="d-row"><span>访问时间</span><b>{{ formatDate(detailInfo.access_time) }}</b></div>
+                <div class="d-row" v-if="detailInfo.pixel"><span>分辨率</span><b>{{ detailInfo.pixel }}</b></div>
+                <div class="d-row" v-if="detailInfo.owner"><span>所有者</span><b>{{ mask(detailInfo.owner, 'uid') }}</b></div>
+                <div class="d-row"><span>路径</span><b class="d-path">{{ mask(detailInfo.path, 'path') }}</b></div>
+              </div>
+              <p v-else class="task-empty">未获取到详情</p>
+            </div>
+
+            <!-- 任务中心视图：NAS 内部任务 + 网关传输记录（含 Hash 复查明细） -->
+            <div v-else-if="activeDialog.type === 'task'" class="task-view">
+              <div class="task-tabs">
                 <button
-                  v-for="a in albumList" :key="a.album_uuid"
-                  class="album-item" :class="{ active: activeAlbum === a.album_uuid }"
-                  @click="selectAlbum(a)"
+                  v-for="t in taskTabs"
+                  :key="t.key"
+                  class="task-tab"
+                  :class="{ active: taskTab === t.key }"
+                  @click="switchTaskTab(t.key)"
                 >
-                  <span class="a-name">{{ albumDisplayName(a) }}</span>
-                  <span class="a-count">{{ a.photo_count + a.video_count }} 项</span>
+                  {{ t.name }}
+                </button>
+                <button class="task-refresh" :disabled="taskLoading" @click="loadTasks(taskTab)">
+                  {{ taskLoading ? '加载中…' : '刷新' }}
                 </button>
               </div>
-              <div class="album-photos">
-                <p v-if="albumLoading" class="task-empty">加载中…</p>
-                <p v-else-if="albumError" class="task-empty">{{ albumError }}</p>
-                <p v-else-if="albumPhotos.length === 0" class="task-empty">该相册暂无内容</p>
-                <div v-else class="album-grid">
-                  <div v-for="p in albumPhotos" :key="p.member_id" class="aph" @click="openAlbumPhoto(p)">
-                    <img :src="`/api/thumbnail?path=${encodeURIComponent(p.path)}&size=small`" :alt="p.name" loading="lazy" />
-                  </div>
-                </div>
+
+              <div v-if="taskSummary" class="task-summary">
+                <span>进行中 <b>{{ taskSummary.running_cnt ?? 0 }}</b></span>
+                <span>成功 <b>{{ taskSummary.success_cnt ?? 0 }}</b></span>
+                <span>失败 <b class="text-red">{{ taskSummary.failed_cnt ?? 0 }}</b></span>
+                <span>已停止 <b>{{ taskSummary.stop_cnt ?? 0 }}</b></span>
               </div>
-            </div>
-          </div>
 
-          <!-- 最近打开历史视图 -->
-          <div v-else-if="activeDialog.type === 'openHistory'" class="task-view">
-            <p v-if="histLoading" class="task-empty">加载中…</p>
-            <p v-else-if="openHistory.length === 0" class="task-empty">暂无最近打开记录</p>
-            <div v-else class="task-list">
-              <div v-for="(h, i) in openHistory" :key="i" class="task-card hist-card" @click="openHistoryFile(h)">
-                <div class="t-top">
-                  <span class="t-name" :title="h.parent + '/' + h.name">{{ h.name }}</span>
-                  <span class="t-status text-muted">{{ formatDate(h.access_time) }}</span>
-                </div>
-                <div class="t-bot">
-                  <span>{{ mask(h.parent, 'path') }}</span>
-                  <span>{{ formatSize(h.size) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+              <!-- NAS 任务查询不可用时如实说明，避免误判为「没有任务」 -->
+              <p v-if="nasTasksUnavailable" class="task-warn">
+                ⚠️ 暂时无法读取 NAS 内部任务（隧道未连接），以下仅显示网关记录的网页传输。
+              </p>
 
-          <!-- 文件详情视图 -->
-          <div v-else-if="activeDialog.type === 'fileDetail'" class="task-view">
-            <div v-if="detailInfo" class="detail-grid">
-              <div class="d-row"><span>文件名</span><b>{{ detailInfo.name }}</b></div>
-              <div class="d-row"><span>类型</span><b>{{ detailInfo.type || '文件' }}</b></div>
-              <div class="d-row"><span>大小</span><b>{{ formatSize(detailInfo.size) }}</b></div>
-              <div class="d-row"><span>修改时间</span><b>{{ formatDate(detailInfo.modified_time) }}</b></div>
-              <div class="d-row"><span>创建时间</span><b>{{ formatDate(detailInfo.create_time) }}</b></div>
-              <div class="d-row"><span>访问时间</span><b>{{ formatDate(detailInfo.access_time) }}</b></div>
-              <div class="d-row" v-if="detailInfo.pixel"><span>分辨率</span><b>{{ detailInfo.pixel }}</b></div>
-              <div class="d-row" v-if="detailInfo.owner"><span>所有者</span><b>{{ mask(detailInfo.owner, 'uid') }}</b></div>
-              <div class="d-row"><span>路径</span><b class="d-path">{{ mask(detailInfo.path, 'path') }}</b></div>
-            </div>
-            <p v-else class="task-empty">未获取到详情</p>
-          </div>
-
-          <!-- 任务中心视图：NAS 内部任务 + 网关传输记录（含 Hash 复查明细） -->
-          <div v-else-if="activeDialog.type === 'task'" class="task-view">
-            <div class="task-tabs">
-              <button
-                v-for="t in taskTabs"
-                :key="t.key"
-                class="task-tab"
-                :class="{ active: taskTab === t.key }"
-                @click="switchTaskTab(t.key)"
-              >
-                {{ t.name }}
-              </button>
-              <button class="task-refresh" :disabled="taskLoading" @click="loadTasks(taskTab)">
-                {{ taskLoading ? '加载中…' : '刷新' }}
-              </button>
-            </div>
-
-            <div v-if="taskSummary" class="task-summary">
-              <span>进行中 <b>{{ taskSummary.running_cnt ?? 0 }}</b></span>
-              <span>成功 <b>{{ taskSummary.success_cnt ?? 0 }}</b></span>
-              <span>失败 <b class="text-red">{{ taskSummary.failed_cnt ?? 0 }}</b></span>
-              <span>已停止 <b>{{ taskSummary.stop_cnt ?? 0 }}</b></span>
-            </div>
-
-            <!-- NAS 任务查询不可用时如实说明，避免误判为「没有任务」 -->
-            <p v-if="nasTasksUnavailable" class="task-warn">
-              ⚠️ 暂时无法读取 NAS 内部任务（隧道未连接），以下仅显示网关记录的网页传输。
-            </p>
-
-            <!-- 传输记录管理：保留策略与手动清空 -->
-            <div class="transfer-bar">
-              <span class="tb-label">
-                网页传输记录 <b>{{ taskSummary?.transfer_total ?? 0 }}</b> 条
-              </span>
-              <label class="tb-retention">
-                保留
-                <select
-                  class="tb-select"
-                  :value="retentionSetting"
-                  :disabled="retentionSaving"
-                  @change="changeRetention($event.target.value)"
+              <!-- 传输记录管理：保留策略与手动清空 -->
+              <div class="transfer-bar">
+                <span class="tb-label">
+                  网页传输记录 <b>{{ taskSummary?.transfer_total ?? 0 }}</b> 条
+                </span>
+                <label class="tb-retention">
+                  保留
+                  <select
+                    class="tb-select"
+                    :value="retentionSetting"
+                    :disabled="retentionSaving"
+                    @change="changeRetention($event.target.value)"
+                  >
+                    <option :value="0">全部保留</option>
+                    <option :value="500">最近 500 条</option>
+                    <option :value="200">最近 200 条</option>
+                    <option :value="100">最近 100 条</option>
+                  </select>
+                </label>
+                <button
+                  class="tb-clear"
+                  :disabled="transferClearing || (taskSummary?.transfer_total ?? 0) === 0"
+                  @click="clearTransferHistory"
                 >
-                  <option :value="0">全部保留</option>
-                  <option :value="500">最近 500 条</option>
-                  <option :value="200">最近 200 条</option>
-                  <option :value="100">最近 100 条</option>
-                </select>
-              </label>
-              <button
-                class="tb-clear"
-                :disabled="transferClearing || (taskSummary?.transfer_total ?? 0) === 0"
-                @click="clearTransferHistory"
-              >
-                {{ transferClearing ? '清理中…' : '清空传输历史' }}
-              </button>
-            </div>
+                  {{ transferClearing ? '清理中…' : '清空传输历史' }}
+                </button>
+              </div>
 
-            <p v-if="taskError" class="task-empty">{{ taskError }}</p>
-            <p v-else-if="!taskLoading && tasks.length === 0" class="task-empty">
-              暂无任务记录
-            </p>
+              <p v-if="taskError" class="task-empty">{{ taskError }}</p>
+              <p v-else-if="!taskLoading && tasks.length === 0" class="task-empty">
+                暂无任务记录
+              </p>
 
-            <div v-else class="task-list">
-              <div v-for="t in tasks" :key="t.id" class="task-card">
-                <div class="t-top">
-                  <span class="t-name" :title="t.src[0] || t.name">
-                    <!-- 来源徽标：区分网关本地传输与 NAS 内部任务 -->
-                    <span class="t-origin" :class="t.source === 'gateway' ? 'gw' : 'nas'">
-                      {{ t.source === 'gateway' ? (t.direction === 'download' ? '↓ 下载' : '↑ 上传') : 'NAS' }}
+              <div v-else class="task-list">
+                <div v-for="t in tasks" :key="t.id" class="task-card">
+                  <div class="t-top">
+                    <span class="t-name" :title="t.src[0] || t.name">
+                      <!-- 来源徽标：区分网关本地传输与 NAS 内部任务 -->
+                      <span class="t-origin" :class="t.source === 'gateway' ? 'gw' : 'nas'">
+                        {{ t.source === 'gateway' ? (t.direction === 'download' ? '↓ 下载' : '↑ 上传') : 'NAS' }}
+                      </span>
+                      {{ t.name || '(未知文件)' }}
+                      <template v-if="t.srcCount > 1">等 {{ t.srcCount }} 项</template>
                     </span>
-                    {{ t.name || '(未知文件)' }}
-                    <template v-if="t.srcCount > 1">等 {{ t.srcCount }} 项</template>
-                  </span>
-                  <span class="t-status" :class="taskStatusClass(t.status)">
-                    {{ taskStatusText(t) }}
-                  </span>
-                </div>
-
-                <div class="t-prog">
-                  <div class="t-fill" :class="{ green: t.status === 'success', red: t.status === 'failed' }"
-                       :style="{ width: (t.progress ?? 0) + '%' }"></div>
-                </div>
-
-                <div class="t-bot">
-                  <span>{{ taskActionText(t.action) }} · {{ t.progress ?? 0 }}%</span>
-                  <span v-if="t.speed">{{ t.speed }}</span>
-                  <span v-if="t.totalFiles != null">{{ t.handledFiles ?? 0 }}/{{ t.totalFiles }} 个文件</span>
-                  <span v-if="t.errMsg && t.errCode">{{ t.errMsg }}</span>
-                </div>
-
-                <!-- Hash 复查明细：仅传输记录有，供人工比对两端哈希 -->
-                <div v-if="t.source === 'gateway'" class="t-hash">
-                  <div class="th-row">
-                    <span class="th-k">网关计算</span>
-                    <span class="th-v">{{ t.localHash || '—' }}</span>
+                    <span class="t-status" :class="taskStatusClass(t.status)">
+                      {{ taskStatusText(t) }}
+                    </span>
                   </div>
-                  <div class="th-row">
-                    <span class="th-k">NAS 返回</span>
-                    <span class="th-v">{{ t.deviceHash || '—' }}</span>
+
+                  <div class="t-prog">
+                    <div class="t-fill" :class="{ green: t.status === 'success', red: t.status === 'failed' }"
+                         :style="{ width: (t.progress ?? 0) + '%' }"></div>
                   </div>
-                  <div class="th-verdict" :class="verifyClass(t.verified)">
-                    {{ verifyLabel(t.verified) }}
-                    <span v-if="t.verifyNote" class="th-note">· {{ t.verifyNote }}</span>
+
+                  <div class="t-bot">
+                    <span>{{ taskActionText(t.action) }} · {{ t.progress ?? 0 }}%</span>
+                    <span v-if="t.speed">{{ t.speed }}</span>
+                    <span v-if="t.totalFiles != null">{{ t.handledFiles ?? 0 }}/{{ t.totalFiles }} 个文件</span>
+                    <span v-if="t.errMsg && t.errCode">{{ t.errMsg }}</span>
+                  </div>
+
+                  <!-- Hash 复查明细：仅传输记录有，供人工比对两端哈希 -->
+                  <div v-if="t.source === 'gateway'" class="t-hash">
+                    <div class="th-row">
+                      <span class="th-k">网关计算</span>
+                      <span class="th-v">{{ t.localHash || '—' }}</span>
+                    </div>
+                    <div class="th-row">
+                      <span class="th-k">NAS 返回</span>
+                      <span class="th-v">{{ t.deviceHash || '—' }}</span>
+                    </div>
+                    <div class="th-verdict" :class="verifyClass(t.verified)">
+                      {{ verifyLabel(t.verified) }}
+                      <span v-if="t.verifyNote" class="th-note">· {{ t.verifyNote }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -387,64 +393,66 @@
           </div>
         </div>
       </div>
-    </div>
+    </Transition>
 
     <!-- 媒体大图与视频播放器弹窗 (升级版：支持无级滚轮缩放、手势拖拽平移、旋转与全屏控制) -->
-    <div v-if="activeMedia" class="media-viewer-backdrop" @click.self="closeActiveMedia">
-      <div class="media-viewer-box" :class="{ 'fullscreen-box': isImageViewerFullscreen }">
-        <div class="viewer-header">
-          <div class="vh-title">
-            <span class="icon">{{ activeMedia.type === 'video' ? '🎬' : '🖼️' }}</span>
-            <span class="name">{{ activeMedia.name }}</span>
-          </div>
+    <Transition name="mi-modal">
+      <div v-if="activeMedia" class="media-viewer-backdrop" @click.self="closeActiveMedia">
+        <div class="media-viewer-box" :class="{ 'fullscreen-box': isImageViewerFullscreen }">
+          <div class="viewer-header">
+            <div class="vh-title">
+              <span class="icon">{{ activeMedia.type === 'video' ? '🎬' : '🖼️' }}</span>
+              <span class="name">{{ activeMedia.name }}</span>
+            </div>
 
-          <!-- 图片专用交互工具条 -->
-          <div v-if="activeMedia.type !== 'video'" class="viewer-toolbar">
-            <button class="tb-btn" @click="zoomImage(0.25)" title="放大">+</button>
-            <span class="zoom-text">{{ Math.round(imageScale * 100) }}%</span>
-            <button class="tb-btn" @click="zoomImage(-0.25)" title="缩小">-</button>
-            <button class="tb-btn" @click="resetImageTransform" title="适应屏幕 / 1:1">⟲</button>
-            <button class="tb-btn" @click="rotateImage" title="向右旋转 90 度">↻</button>
-            <button class="tb-btn" @click="isImageViewerFullscreen = !isImageViewerFullscreen" title="切换全屏">
-              {{ isImageViewerFullscreen ? '⤦' : '⤢' }}
-            </button>
-          </div>
+            <!-- 图片专用交互工具条 -->
+            <div v-if="activeMedia.type !== 'video'" class="viewer-toolbar">
+              <button class="tb-btn" @click="zoomImage(0.25)" title="放大">+</button>
+              <span class="zoom-text">{{ Math.round(imageScale * 100) }}%</span>
+              <button class="tb-btn" @click="zoomImage(-0.25)" title="缩小">-</button>
+              <button class="tb-btn" @click="resetImageTransform" title="适应屏幕 / 1:1">⟲</button>
+              <button class="tb-btn" @click="rotateImage" title="向右旋转 90 度">↻</button>
+              <button class="tb-btn" @click="isImageViewerFullscreen = !isImageViewerFullscreen" title="切换全屏">
+                {{ isImageViewerFullscreen ? '⤦' : '⤢' }}
+              </button>
+            </div>
 
-          <button class="close-viewer" @click="closeActiveMedia">✕</button>
-        </div>
-        <div 
-          class="viewer-body" 
-          @wheel.prevent="handleImageWheel"
-          @mousedown="handleImageMouseDown"
-        >
-          <video
-            v-if="activeMedia.type === 'video'"
-            :src="activeMedia.videoUrl"
-            controls
-            autoplay
-            class="viewer-video"
-          ></video>
-          <img
-            v-else
-            :src="activeMedia.previewUrl || activeMedia.thumbnail"
-            :alt="activeMedia.name"
-            class="viewer-img"
-            :class="{ 'is-dragging': isDraggingImage }"
-            :style="{
-              transform: `translate(${imageTranslate.x}px, ${imageTranslate.y}px) scale(${imageScale}) rotate(${imageRotation}deg)`,
-              cursor: imageScale > 1 ? (isDraggingImage ? 'grabbing' : 'grab') : 'default'
-            }"
-            @dblclick="toggleImageDoubleZoom"
-            draggable="false"
-          />
-        </div>
-        <div class="viewer-footer">
-          <span>分辨率: {{ activeMedia.dim || '未上报' }}</span>
-          <span>文件大小: {{ formatSize(activeMedia.size) }}</span>
-          <span>路径: {{ mask(activeMedia.path || statusInfo.dataRoot, 'path') || '未上报' }}</span>
+            <button class="close-viewer" @click="closeActiveMedia">✕</button>
+          </div>
+          <div 
+            class="viewer-body" 
+            @wheel.prevent="handleImageWheel"
+            @mousedown="handleImageMouseDown"
+          >
+            <video
+              v-if="activeMedia.type === 'video'"
+              :src="activeMedia.videoUrl"
+              controls
+              autoplay
+              class="viewer-video"
+            ></video>
+            <img
+              v-else
+              :src="activeMedia.previewUrl || activeMedia.thumbnail"
+              :alt="activeMedia.name"
+              class="viewer-img"
+              :class="{ 'is-dragging': isDraggingImage }"
+              :style="{
+                transform: `translate(${imageTranslate.x}px, ${imageTranslate.y}px) scale(${imageScale}) rotate(${imageRotation}deg)`,
+                cursor: imageScale > 1 ? (isDraggingImage ? 'grabbing' : 'grab') : 'default'
+              }"
+              @dblclick="toggleImageDoubleZoom"
+              draggable="false"
+            />
+          </div>
+          <div class="viewer-footer">
+            <span>分辨率: {{ activeMedia.dim || '未上报' }}</span>
+            <span>文件大小: {{ formatSize(activeMedia.size) }}</span>
+            <span>路径: {{ mask(activeMedia.path || statusInfo.dataRoot, 'path') || '未上报' }}</span>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -1354,7 +1362,9 @@ onUnmounted(() => {
   padding: 10px 16px;
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-  animation: fadeIn 0.2s ease-out;
+  /* 进出场动画由全局 .mi-notify-* 类提供。
+     这里不再写 animation —— 原来引用的 fadeIn 是本组件的 scoped 作用域里
+     并不存在的关键帧，等于每来一条通知都在空跑，节点是硬闪出来的。 */
 }
 
 .offline-banner {
@@ -1493,16 +1503,17 @@ onUnmounted(() => {
   align-items: start;
 }
 
-.column-left {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
+/* 首屏两列级联进场：左列先铺、右列稍后，避免整块内容一次性闪出 */
+.column-left,
 .column-right {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  animation: miRiseIn var(--mi-dur-slow) var(--mi-ease-out) both;
+}
+
+.column-right {
+  animation-delay: 60ms;
 }
 
 .app-footer {
@@ -1601,6 +1612,9 @@ onUnmounted(() => {
 .modal-cnt {
   padding: 20px 24px;
   overflow-y: auto;
+  /* 视图切换时 :key 会重建本节点，CSS 动画随之重播，
+     让「设置/相册/历史/任务」之间的切换是滑入而不是硬切 */
+  animation: miViewIn var(--mi-dur) var(--mi-ease-out) both;
 }
 
 .modal-desc {

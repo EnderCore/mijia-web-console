@@ -1,80 +1,82 @@
 <template>
-  <div v-if="visible" class="doc-backdrop" @click.self="$emit('close')">
-    <div class="doc-container mi-surface">
-      <!-- 顶部控制条 -->
-      <div class="doc-header">
-        <div class="doc-meta">
-          <span class="file-icon">{{ getFileTypeIcon() }}</span>
-          <span class="file-name" :title="file?.name">{{ file?.name }}</span>
-          <span v-if="file?.size" class="size-badge">{{ formatSize(file.size) }}</span>
-        </div>
-
-        <div class="header-actions">
-          <a :href="fileStreamUrl" :download="file?.name" class="action-btn download-btn" title="下载原文件">
-            📥 下载
-          </a>
-          <button class="close-x" @click="$emit('close')">✕</button>
-        </div>
-      </div>
-
-      <!-- 预览核心展示区 -->
-      <div class="doc-body">
-        <!-- 1. PDF 预览 (内存安全 Blob 沙箱直显，阻断浏览器跨域/未知流下载触发) -->
-        <div v-if="docCategory === 'pdf'" class="body-frame-box">
-          <div v-if="loadingPdf" class="pdf-loading-box">
-            <span class="loading-spin">⚡</span>
-            <span>正在准备 PDF 安全流预览，请稍候...</span>
+  <Transition name="mi-modal">
+    <div v-if="visible" class="doc-backdrop" @click.self="$emit('close')">
+      <div class="doc-container mi-surface">
+        <!-- 顶部控制条 -->
+        <div class="doc-header">
+          <div class="doc-meta">
+            <span class="file-icon">{{ getFileTypeIcon() }}</span>
+            <span class="file-name" :title="file?.name">{{ file?.name }}</span>
+            <span v-if="file?.size" class="size-badge">{{ formatSize(file.size) }}</span>
           </div>
-          <div v-else-if="pdfError" class="pdf-error-box">
-            <span class="err-icon">⚠️</span>
-            <p>{{ pdfError }}</p>
-            <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">下载后本地查看</a>
+
+          <div class="header-actions">
+            <a :href="fileStreamUrl" :download="file?.name" class="action-btn download-btn" title="下载原文件">
+              📥 下载
+            </a>
+            <button class="close-x" @click="$emit('close')">✕</button>
           </div>
-          <iframe 
-            v-else-if="pdfBlobUrl" 
-            :src="pdfBlobUrl" 
-            class="pdf-frame" 
-            frameborder="0"
-          ></iframe>
         </div>
 
-        <!-- 2. 文本 / 代码 / Markdown 预览 -->
-        <div v-else-if="docCategory === 'text'" class="body-text-box">
-          <div v-if="loadingText" class="text-loading">正在拉取文本内容...</div>
-          <div v-else-if="textError" class="text-error">{{ textError }}</div>
-          <pre v-else class="text-code-view"><code>{{ textContent }}</code></pre>
-        </div>
-
-        <!-- 3. 音频音乐播放器 -->
-        <div v-else-if="docCategory === 'audio'" class="body-audio-box">
-          <div class="audio-disc">
-            <span class="music-note">🎵</span>
+        <!-- 预览核心展示区 -->
+        <div class="doc-body">
+          <!-- 1. PDF 预览 (内存安全 Blob 沙箱直显，阻断浏览器跨域/未知流下载触发) -->
+          <div v-if="docCategory === 'pdf'" class="body-frame-box">
+            <div v-if="loadingPdf" class="pdf-loading-box">
+              <span class="loading-spin">⚡</span>
+              <span>正在准备 PDF 安全流预览，请稍候...</span>
+            </div>
+            <div v-else-if="pdfError" class="pdf-error-box">
+              <span class="err-icon">⚠️</span>
+              <p>{{ pdfError }}</p>
+              <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">下载后本地查看</a>
+            </div>
+            <iframe 
+              v-else-if="pdfBlobUrl" 
+              :src="pdfBlobUrl" 
+              class="pdf-frame" 
+              frameborder="0"
+            ></iframe>
           </div>
-          <div class="audio-info">
-            <h4>{{ file?.name }}</h4>
-            <p>音频流直连播放 · 支持 MP3 / FLAC / WAV</p>
+
+          <!-- 2. 文本 / 代码 / Markdown 预览 -->
+          <div v-else-if="docCategory === 'text'" class="body-text-box">
+            <div v-if="loadingText" class="text-loading">正在拉取文本内容...</div>
+            <div v-else-if="textError" class="text-error">{{ textError }}</div>
+            <pre v-else class="text-code-view"><code>{{ textContent }}</code></pre>
           </div>
-          <audio :src="fileStreamUrl" controls autoplay class="audio-player"></audio>
+
+          <!-- 3. 音频音乐播放器 -->
+          <div v-else-if="docCategory === 'audio'" class="body-audio-box">
+            <div class="audio-disc">
+              <span class="music-note">🎵</span>
+            </div>
+            <div class="audio-info">
+              <h4>{{ file?.name }}</h4>
+              <p>音频流直连播放 · 支持 MP3 / FLAC / WAV</p>
+            </div>
+            <audio :src="fileStreamUrl" controls autoplay class="audio-player"></audio>
+          </div>
+
+          <!-- 4. 其他不支持在线预览的二进制文件 (APK, ZIP 等) -->
+          <div v-else class="body-unknown-box">
+            <span class="unknown-icon">📦</span>
+            <h3>该文件格式暂不支持直接在线解析</h3>
+            <p>{{ file?.name }} · {{ formatSize(file?.size) }}</p>
+            <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">
+              直接下载到本地查看
+            </a>
+          </div>
         </div>
 
-        <!-- 4. 其他不支持在线预览的二进制文件 (APK, ZIP 等) -->
-        <div v-else class="body-unknown-box">
-          <span class="unknown-icon">📦</span>
-          <h3>该文件格式暂不支持直接在线解析</h3>
-          <p>{{ file?.name }} · {{ formatSize(file?.size) }}</p>
-          <a :href="fileStreamUrl" :download="file?.name" class="download-large-btn">
-            直接下载到本地查看
-          </a>
+        <!-- 底部路径说明栏 -->
+        <div class="doc-footer">
+          <span>存储物理路径: <code class="code-path">{{ mask(file?.path, 'path') }}</code></span>
+          <span>NAS Range 流直连</span>
         </div>
-      </div>
-
-      <!-- 底部路径说明栏 -->
-      <div class="doc-footer">
-        <span>存储物理路径: <code class="code-path">{{ mask(file?.path, 'path') }}</code></span>
-        <span>NAS Range 流直连</span>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -202,7 +204,6 @@ watch(() => props.visible, (val) => {
   align-items: center;
   justify-content: center;
   z-index: 1350;
-  animation: fadeIn 0.2s ease-out;
 }
 
 .doc-container {
@@ -295,6 +296,14 @@ watch(() => props.visible, (val) => {
   display: flex;
 }
 
+/* PDF / 文本 / 音频 / 未知类型之间切换时对应容器被替换，动画随之重播 */
+.body-frame-box,
+.body-text-box,
+.body-audio-box,
+.body-unknown-box {
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
+}
+
 .body-frame-box {
   width: 100%;
   height: 100%;
@@ -316,7 +325,9 @@ watch(() => props.visible, (val) => {
 
 .loading-spin {
   font-size: 28px;
-  animation: pulse 1.2s infinite ease-in-out;
+  /* 用全局 miPulse：本组件里原本引用的 pulse 关键帧只定义在
+     FileExplorerModal 的 scoped 作用域中，被重命名后此处根本解析不到。 */
+  animation: miPulse 1.2s infinite ease-in-out;
 }
 
 .err-icon {
@@ -454,10 +465,5 @@ watch(() => props.visible, (val) => {
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--mi-text-main);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
 }
 </style>

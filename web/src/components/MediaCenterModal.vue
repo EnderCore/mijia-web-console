@@ -1,33 +1,35 @@
 <template>
-  <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
-    <div class="modal-container mi-surface">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span class="icon">🎬</span>
-          <h4>小米智能存储 · 官方影视墙</h4>
+  <Transition name="mi-modal">
+    <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
+      <div class="modal-container mi-surface">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span class="icon">🎬</span>
+            <h4>小米智能存储 · 官方影视墙</h4>
+          </div>
+          <div class="modal-actions">
+            <a v-if="mediaUrl" :href="mediaUrl" target="_blank" class="open-tab-btn" title="在新标签页全屏打开">
+              在新标签页打开 ↗
+            </a>
+            <button class="close-btn" @click="$emit('close')">✕</button>
+          </div>
         </div>
-        <div class="modal-actions">
-          <a v-if="mediaUrl" :href="mediaUrl" target="_blank" class="open-tab-btn" title="在新标签页全屏打开">
-            在新标签页打开 ↗
-          </a>
-          <button class="close-btn" @click="$emit('close')">✕</button>
-        </div>
-      </div>
 
-      <div class="modal-body">
-        <!-- 拿不到地址时说明原因，而不是显示一个空白 iframe -->
-        <div v-if="!mediaUrl" class="frame-error">
-          <p class="err-title">无法打开影视墙</p>
-          <p class="err-msg">{{ error || 'NAS 未返回插件地址' }}</p>
-          <p class="err-hint">
-            影视墙是 NAS 上的插件页面，需经网关代理并注入访问令牌才能打开。
-            请确认官方客户端在运行、且 NAS 已安装「影视」插件。
-          </p>
+        <div class="modal-body">
+          <!-- 拿不到地址时说明原因，而不是显示一个空白 iframe -->
+          <div v-if="!mediaUrl" class="frame-error">
+            <p class="err-title">无法打开影视墙</p>
+            <p class="err-msg">{{ error || 'NAS 未返回插件地址' }}</p>
+            <p class="err-hint">
+              影视墙是 NAS 上的插件页面，需经网关代理并注入访问令牌才能打开。
+              请确认官方客户端在运行、且 NAS 已安装「影视」插件。
+            </p>
+          </div>
+          <iframe v-else :src="mediaUrl" class="media-frame" frameborder="0"></iframe>
         </div>
-        <iframe v-else :src="mediaUrl" class="media-frame" frameborder="0"></iframe>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -53,7 +55,6 @@ defineEmits(['close']);
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease-out;
 }
 
 .modal-container {
@@ -167,10 +168,5 @@ defineEmits(['close']);
   line-height: 1.7;
   color: var(--mi-text-sub);
   max-width: 460px;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
 }
 </style>

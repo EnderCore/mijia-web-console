@@ -956,20 +956,322 @@ button:active, .file-card:active, .media-item:active {
   transform: scale(0.98);
 }
 
-@keyframes fadeInScale {
+/* ==========================================================================
+   过渡动效体系
+   --------------------------------------------------------------------------
+   统一在这里定义时长/缓动与关键帧，组件只引用，避免各处各写一套参数
+   导致节奏不一致（同一屏里有的 0.2s、有的 0.3s，快慢不一更显生硬）。
+   ========================================================================== */
+
+:root {
+  /* 进场用「快出缓停」，退场要更快，否则用户点了关闭还得等它消失 */
+  --mi-dur-fast: 140ms;
+  --mi-dur: 220ms;
+  --mi-dur-slow: 320ms;
+  --mi-ease-out: cubic-bezier(0.16, 1, 0.3, 1);   /* 减速：进场 */
+  --mi-ease-in: cubic-bezier(0.4, 0, 1, 1);        /* 加速：退场 */
+  --mi-ease-soft: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes miFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 全局呼吸态（加载中提示等）。
+   必须放在这里而不是某个组件的 <style scoped> 里：scoped 会把 @keyframes
+   重命名成 pulse-<hash>，其他组件引用裸 pulse 时就解析不到，动画静默失效。 */
+@keyframes miPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes miFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* 容器进场：轻微上浮 + 淡入，比纯缩放更接近"从页面里长出来"的观感 */
+@keyframes miPopIn {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
-.custom-modal, .media-viewer-box, .explorer-modal {
-  animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+@keyframes miPopOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
 }
+
+/* 弹窗容器统一进场/退场。
+   走一个包裹整个遮罩的 <Transition name="mi-modal">：
+   遮罩负责淡入淡出，容器负责上浮缩放，两层各自播放互不干扰。 */
+.mi-modal-enter-active {
+  animation: miFadeIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-modal-leave-active {
+  animation: miFadeOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+.mi-modal-enter-active :is(.custom-modal, .explorer-modal, .doc-container, .modal-container, .player-container, .media-viewer-box) {
+  animation: miPopIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-modal-leave-active :is(.custom-modal, .explorer-modal, .doc-container, .modal-container, .player-container, .media-viewer-box) {
+  animation: miPopOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+
+/* Vue <Transition> 的类名：进场 */
+.mi-fade-enter-active {
+  animation: miFadeIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-fade-leave-active {
+  animation: miFadeOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+.mi-pop-enter-active {
+  animation: miPopIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-pop-leave-active {
+  animation: miPopOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+
+/* 对话框内部视图切换（设置/相册/历史/任务之间）用更短的位移过渡 */
+@keyframes miViewIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mi-view-enter-active {
+  animation: miViewIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-view-leave-active {
+  animation: miViewOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+
+@keyframes miViewOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+/* 同一容器内两个平级视图互换（网格↔列表、目录进出）。
+   元素本身不会卸载，所以在切换瞬间给新内容一点"浮起"的位移，
+   让变化被眼睛捕捉到，而不是像素级硬切。 */
+@keyframes miSwapIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.mi-swap-enter-active {
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
+}
+
+/* 平级互换用 mode="out-in"：旧内容先快速退场，再让新内容进场。
+   退场必须比进场快，否则切换会有明显的"空白等待"。 */
+@keyframes miSwapOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.995);
+  }
+}
+
+.mi-swap-leave-active {
+  animation: miSwapOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+
+/* 主题设置里 <transition name="fade"> 的对应类。
+   之前只写了 name 没有写类，节点是硬切出现的。 */
+.fade-enter-active {
+  animation: miFadeIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.fade-leave-active {
+  animation: miFadeOut var(--mi-dur-fast) var(--mi-ease-in) both;
+}
+
+/* 顶部实时推送通知：从右侧滑入，退场收缩上移。
+   走 TransitionGroup，所以每条都要能独立播放，用 animation 而非 transition。
+   退场把 max-height 与内边距一起收掉；容器是 flex + gap，没有 margin，
+   所以这里不能动 margin —— 那会在动画开始时凭空多出一段空白。 */
+@keyframes miNotifyIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes miNotifyOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    max-height: 160px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px) scale(0.96);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.mi-notify-enter-active {
+  animation: miNotifyIn var(--mi-dur) var(--mi-ease-out) both;
+}
+.mi-notify-leave-active {
+  animation: miNotifyOut var(--mi-dur-fast) var(--mi-ease-in) both;
+  overflow: hidden;
+}
+
+/* 面板内纵向列表（缓存明细等）的条目增删。
+   与通知条分开定义：进场是原位淡入上浮，不该从右边滑进来。
+   退场收掉 max-height 与内边距，让条目自己压扁，
+   下方条目跟着收拢，而不是整行瞬间消失、内容跳上来。 */
+/* 起始 max-height 要留足余量：条目名换行时实际高度会超过单行值，
+   若起始值小于真实高度，动画第一帧就会被裁掉一截，看起来像"闪一下"。 */
+@keyframes miCollapseOut {
+  from {
+    opacity: 1;
+    max-height: 160px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.mi-collapse-enter-active {
+  animation: miRiseIn var(--mi-dur) var(--mi-ease-out) backwards;
+}
+.mi-collapse-leave-active {
+  animation: miCollapseOut var(--mi-dur-fast) var(--mi-ease-in) both;
+  overflow: hidden;
+}
+
+/* 同级条目补位时平滑滑动，而不是瞬移顶上 */
+.mi-collapse-move,
+.mi-notify-move {
+  transition: transform var(--mi-dur) var(--mi-ease-soft);
+}
+
+/* 列表项级联进场：靠索引错开延迟，让成片内容"铺"进来而不是整块闪出 */
+@keyframes miRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 级联进场的延迟由使用方通过 --i 注入 */
+.mi-stagger > * {
+  animation: miRiseIn var(--mi-dur-slow) var(--mi-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+
+/* 缩略图载入：图片解码完成前先淡入，避免"半张图"一闪而过。
+   animation 从 opacity:0 起算，若图片比动画晚到，动画结束时也已到 1，
+   不会出现图片到位后仍然透明的情况。 */
+@keyframes miImgIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mi-img-in {
+  animation: miImgIn var(--mi-dur-slow) var(--mi-ease-soft) both;
+}
+
+/* 占位底色：图片未到位时给出与卡片一致的灰底，避免一块纯白空洞 */
+.mi-img-placeholder {
+  background: var(--mi-control-bg);
+}
+
+/* 主题切换时让颜色/背景平滑过渡，避免整页"啪"地跳色。
+   只过渡颜色类属性，不写 all —— all 会连 transform 一起过渡，
+   把卡片 hover 上浮拖慢成拖沓的滑动。 */
+html {
+  transition:
+    background-color var(--mi-dur) var(--mi-ease-soft),
+    color var(--mi-dur) var(--mi-ease-soft);
+}
+
+body,
+.top-header,
+.app-footer,
+.mi-surface,
+.custom-modal,
+.explorer-modal,
+.stat-card,
+.monitor-card,
+.app-grid-section,
+.recent-media-card {
+  transition:
+    background-color var(--mi-dur) var(--mi-ease-soft),
+    border-color var(--mi-dur) var(--mi-ease-soft),
+    color var(--mi-dur) var(--mi-ease-soft),
+    box-shadow var(--mi-dur) var(--mi-ease-soft);
+}
+
+/* 动效偏好：系统开启「减少动态效果」时全部降级为几乎瞬时，
+   保留状态变化的可感知性，但不做位移与缩放，避免前庭不适。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

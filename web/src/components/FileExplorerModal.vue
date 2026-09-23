@@ -1,330 +1,333 @@
 <template>
-  <div v-if="visible" class="explorer-backdrop" @click.self="$emit('close')">
-    <div class="explorer-modal mi-surface">
-      <!-- 头部导航与操作栏 -->
-      <div class="explorer-header">
-        <div class="header-left">
-          <span class="icon">📁</span>
-          <h4>全功能文件管理器</h4>
-          <span class="path-badge">{{ mask(currentPath, 'path') }}</span>
-        </div>
-
-        <div class="header-right">
-          <!-- 搜索框 -->
-          <div class="search-box">
-            <span class="search-icon">🔍</span>
-            <input 
-              v-model="searchKeyword" 
-              placeholder="快速过滤文件..." 
-              class="search-input"
-            />
+  <Transition name="mi-modal">
+    <div v-if="visible" class="explorer-backdrop" @click.self="$emit('close')">
+      <div class="explorer-modal mi-surface">
+        <!-- 头部导航与操作栏 -->
+        <div class="explorer-header">
+          <div class="header-left">
+            <span class="icon">📁</span>
+            <h4>全功能文件管理器</h4>
+            <span class="path-badge">{{ mask(currentPath, 'path') }}</span>
           </div>
 
-          <!-- 上传与新建操作 -->
-          <button class="action-pill" @click="$emit('open-history')" title="最近打开的文件">
-            <span>🕐</span><span>最近打开</span>
-          </button>
-          <button class="action-pill upload-pill" @click="triggerFilePick" :disabled="uploading">
-            <span>{{ uploading ? '⏳' : '📤' }}</span>
-            <span>{{ uploading ? uploadProgress + '%' : '上传' }}</span>
-          </button>
-          <button class="action-pill" @click="handleMkdir" title="在当前目录新建文件夹">
-            <span>📁</span><span>新建文件夹</span>
-          </button>
-          <input
-            ref="fileInputRef"
-            type="file"
-            multiple
-            class="hidden-input"
-            @change="handleUpload"
-          />
-
-          <!-- 视图切换 (网格 / 列表) -->
-          <div class="view-toggle">
-            <button 
-              class="v-btn" 
-              :class="{ active: viewMode === 'grid' }"
-              @click="viewMode = 'grid'"
-              title="网格视图"
-            >⊞</button>
-            <button 
-              class="v-btn" 
-              :class="{ active: viewMode === 'list' }"
-              @click="viewMode = 'list'"
-              title="列表视图"
-            >☰</button>
-          </div>
-
-          <button class="close-x" @click="$emit('close')">✕</button>
-        </div>
-      </div>
-
-      <!-- 上传进度条 -->
-      <div v-if="uploading" class="upload-bar">
-        <div class="upload-fill" :style="{ width: uploadProgress + '%' }"></div>
-        <span class="upload-text">正在上传 {{ uploadingName }} · {{ uploadProgress }}%</span>
-      </div>
-
-      <!-- 操作结果提示 -->
-      <div v-if="toast" class="toast-msg" :class="toastType">{{ toast }}</div>
-
-      <!-- 主体区域：左侧目录树导航 + 右侧文件内容流 -->
-      <div class="explorer-body">
-        <!-- 左侧快捷目录树与多级文件夹导航 -->
-        <aside class="sidebar-tree">
-          <div class="tree-section-title">文件类型分类</div>
-          <div 
-            v-for="cat in categories" 
-            :key="cat.key" 
-            class="tree-item"
-            :class="{ active: activeCategory === cat.key && !selectedTreePath }"
-            @click="selectCategory(cat.key)"
-          >
-            <span class="t-icon">{{ cat.icon }}</span>
-            <span class="t-name">{{ cat.name }}</span>
-            <span class="t-count">{{ getCategoryCount(cat.key) }}</span>
-          </div>
-
-          <div class="tree-divider"></div>
-          
-          <!-- 核心：交互式多级文件夹树 (Folder Directory Tree) -->
-          <div class="tree-header-row">
-            <span class="tree-section-title">存储空间目录树</span>
-            <button class="tree-refresh-btn" @click="refreshTree" title="刷新目录结构">🔄</button>
-          </div>
-
-          <div class="folder-tree-container">
-            <div 
-              class="tree-node-item root-node"
-              :class="{ active: currentPath === ROOT_PATH && !selectedTreePath }"
-              @click="navigateTo(ROOT_PATH)"
-            >
-              <span class="t-icon">🏠</span>
-              <span class="node-name">存储根目录</span>
-            </div>
-
-            <!-- 真正的无限级递归文件夹树 (支持 1级、2级、3级、4级...任意深度自由展开) -->
-            <div class="tree-subnodes">
-              <FolderTreeNode
-                v-for="node in folderTree"
-                :key="node.path"
-                :node="node"
-                :current-path="currentPath"
-                @select-node="handleTreeNodeClick"
-                @toggle-node="toggleTreeNode"
+          <div class="header-right">
+            <!-- 搜索框 -->
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input 
+                v-model="searchKeyword" 
+                placeholder="快速过滤文件..." 
+                class="search-input"
               />
             </div>
-          </div>
 
-          <div class="tree-divider"></div>
-          <div class="mount-box">
-            <div class="mount-label">当前视图</div>
-            <div class="mount-val">{{ displayFiles.length }} 项</div>
-            <div class="mount-sub">
-              视频 {{ getCategoryCount('video') }} · 图片 {{ getCategoryCount('photo') }}
+            <!-- 上传与新建操作 -->
+            <button class="action-pill" @click="$emit('open-history')" title="最近打开的文件">
+              <span>🕐</span><span>最近打开</span>
+            </button>
+            <button class="action-pill upload-pill" @click="triggerFilePick" :disabled="uploading">
+              <span>{{ uploading ? '⏳' : '📤' }}</span>
+              <span>{{ uploading ? uploadProgress + '%' : '上传' }}</span>
+            </button>
+            <button class="action-pill" @click="handleMkdir" title="在当前目录新建文件夹">
+              <span>📁</span><span>新建文件夹</span>
+            </button>
+            <input
+              ref="fileInputRef"
+              type="file"
+              multiple
+              class="hidden-input"
+              @change="handleUpload"
+            />
+
+            <!-- 视图切换 (网格 / 列表) -->
+            <div class="view-toggle">
+              <button 
+                class="v-btn" 
+                :class="{ active: viewMode === 'grid' }"
+                @click="viewMode = 'grid'"
+                title="网格视图"
+              >⊞</button>
+              <button 
+                class="v-btn" 
+                :class="{ active: viewMode === 'list' }"
+                @click="viewMode = 'list'"
+                title="列表视图"
+              >☰</button>
             </div>
+
+            <button class="close-x" @click="$emit('close')">✕</button>
           </div>
-        </aside>
+        </div>
 
-        <!-- 右侧文件展示区 -->
-        <main class="content-area">
-          <!-- 工具栏：面包屑路径 + 排序方式 -->
-          <div class="breadcrumb-bar">
-            <div class="crumbs">
-              <span class="crumb-root" @click="navigateTo(ROOT_PATH)">🏠 根目录</span>
-              <template v-for="(seg, idx) in pathSegments" :key="idx">
-                <span class="crumb-sep">/</span>
+        <!-- 上传进度条 -->
+        <div v-if="uploading" class="upload-bar">
+          <div class="upload-fill" :style="{ width: uploadProgress + '%' }"></div>
+          <span class="upload-text">正在上传 {{ uploadingName }} · {{ uploadProgress }}%</span>
+        </div>
+
+        <!-- 操作结果提示 -->
+        <div v-if="toast" class="toast-msg" :class="toastType">{{ toast }}</div>
+
+        <!-- 主体区域：左侧目录树导航 + 右侧文件内容流 -->
+        <div class="explorer-body">
+          <!-- 左侧快捷目录树与多级文件夹导航 -->
+          <aside class="sidebar-tree">
+            <div class="tree-section-title">文件类型分类</div>
+            <div 
+              v-for="cat in categories" 
+              :key="cat.key" 
+              class="tree-item"
+              :class="{ active: activeCategory === cat.key && !selectedTreePath }"
+              @click="selectCategory(cat.key)"
+            >
+              <span class="t-icon">{{ cat.icon }}</span>
+              <span class="t-name">{{ cat.name }}</span>
+              <span class="t-count">{{ getCategoryCount(cat.key) }}</span>
+            </div>
+
+            <div class="tree-divider"></div>
+          
+            <!-- 核心：交互式多级文件夹树 (Folder Directory Tree) -->
+            <div class="tree-header-row">
+              <span class="tree-section-title">存储空间目录树</span>
+              <button class="tree-refresh-btn" @click="refreshTree" title="刷新目录结构">🔄</button>
+            </div>
+
+            <div class="folder-tree-container">
+              <div 
+                class="tree-node-item root-node"
+                :class="{ active: currentPath === ROOT_PATH && !selectedTreePath }"
+                @click="navigateTo(ROOT_PATH)"
+              >
+                <span class="t-icon">🏠</span>
+                <span class="node-name">存储根目录</span>
+              </div>
+
+              <!-- 真正的无限级递归文件夹树 (支持 1级、2级、3级、4级...任意深度自由展开) -->
+              <div class="tree-subnodes">
+                <FolderTreeNode
+                  v-for="node in folderTree"
+                  :key="node.path"
+                  :node="node"
+                  :current-path="currentPath"
+                  @select-node="handleTreeNodeClick"
+                  @toggle-node="toggleTreeNode"
+                />
+              </div>
+            </div>
+
+            <div class="tree-divider"></div>
+            <div class="mount-box">
+              <div class="mount-label">当前视图</div>
+              <div class="mount-val">{{ displayFiles.length }} 项</div>
+              <div class="mount-sub">
+                视频 {{ getCategoryCount('video') }} · 图片 {{ getCategoryCount('photo') }}
+              </div>
+            </div>
+          </aside>
+
+          <!-- 右侧文件展示区 -->
+          <main class="content-area">
+            <!-- 工具栏：面包屑路径 + 排序方式 -->
+            <div class="breadcrumb-bar">
+              <div class="crumbs">
+                <span class="crumb-root" @click="navigateTo(ROOT_PATH)">🏠 根目录</span>
+                <template v-for="(seg, idx) in pathSegments" :key="idx">
+                  <span class="crumb-sep">/</span>
                 
-                <!-- 级联快捷下拉导航 -->
-                <div class="crumb-segment-wrapper">
-                  <span 
-                    class="crumb-seg" 
-                    :class="{ 'crumb-cur': idx === pathSegments.length - 1 }"
-                    @click="navigateTo(seg.fullPath)"
-                  >{{ seg.name }}</span>
-                  <button 
-                    class="crumb-dropdown-arrow" 
-                    @click.stop="toggleCrumbMenu(seg, idx)"
-                    title="展开同级文件夹快速跳转"
-                  >▾</button>
+                  <!-- 级联快捷下拉导航 -->
+                  <div class="crumb-segment-wrapper">
+                    <span 
+                      class="crumb-seg" 
+                      :class="{ 'crumb-cur': idx === pathSegments.length - 1 }"
+                      @click="navigateTo(seg.fullPath)"
+                    >{{ seg.name }}</span>
+                    <button 
+                      class="crumb-dropdown-arrow" 
+                      @click.stop="toggleCrumbMenu(seg, idx)"
+                      title="展开同级文件夹快速跳转"
+                    >▾</button>
 
-                  <!-- 同级目录悬浮快速跳转面板 -->
-                  <div v-if="activeCrumbIdx === idx" class="crumb-dropdown-menu" @click.stop>
-                    <div class="crumb-menu-title">同级文件夹</div>
-                    <div v-if="crumbSiblingsLoading" class="crumb-menu-loading">加载中...</div>
-                    <div v-else-if="crumbSiblings.length === 0" class="crumb-menu-empty">无同级文件夹</div>
-                    <div 
-                      v-else 
-                      v-for="sib in crumbSiblings" 
-                      :key="sib.path"
-                      class="crumb-menu-item"
-                      :class="{ active: sib.path === seg.fullPath }"
-                      @click="navigateTo(sib.path); activeCrumbIdx = -1"
+                    <!-- 同级目录悬浮快速跳转面板 -->
+                    <div v-if="activeCrumbIdx === idx" class="crumb-dropdown-menu" @click.stop>
+                      <div class="crumb-menu-title">同级文件夹</div>
+                      <div v-if="crumbSiblingsLoading" class="crumb-menu-loading">加载中...</div>
+                      <div v-else-if="crumbSiblings.length === 0" class="crumb-menu-empty">无同级文件夹</div>
+                      <div 
+                        v-else 
+                        v-for="sib in crumbSiblings" 
+                        :key="sib.path"
+                        class="crumb-menu-item"
+                        :class="{ active: sib.path === seg.fullPath }"
+                        @click="navigateTo(sib.path); activeCrumbIdx = -1"
+                      >
+                        <span>📁</span>
+                        <span class="sib-name">{{ sib.name }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            
+              <div class="bar-actions">
+                <!-- 切换分栏视图开关 -->
+                <button 
+                  class="miller-toggle-btn"
+                  :class="{ active: showMillerColumns }"
+                  @click="showMillerColumns = !showMillerColumns"
+                  title="切换/展开多级分栏流转导航"
+                >
+                  <span>🗂️</span>
+                  <span>{{ showMillerColumns ? '收起多级分栏' : '多级分栏流转' }}</span>
+                </button>
+
+                <span v-if="loadingFolder" class="folder-loading-tag">⚡ 正在读取目录...</span>
+                <button 
+                  v-if="pathStack.length > 1" 
+                  class="up-btn" 
+                  @click="navigateUp"
+                  title="返回上一级"
+                >
+                  ⬆ 返回上一级
+                </button>
+                <div class="file-summary">
+                  共 <b>{{ displayFiles.length }}</b> 个项目
+                </div>
+              </div>
+            </div>
+
+            <!-- 核心新增：文件列表上方多级分栏流转视图 (macOS Finder Miller Columns) -->
+            <div v-if="showMillerColumns" class="miller-columns-container">
+              <div class="miller-columns-scroll" ref="millerScrollRef">
+                <div 
+                  v-for="(col, colIdx) in columnChain" 
+                  :key="col.path"
+                  class="miller-column"
+                >
+                  <div class="column-header">
+                    <span class="ch-icon">📁</span>
+                    <span class="ch-title" :title="col.name">{{ col.name }}</span>
+                    <span class="ch-count">{{ col.items.length }}</span>
+                  </div>
+                  <div class="column-items-list">
+                    <div v-if="col.loading" class="col-loading">读取中...</div>
+                    <div v-else-if="col.items.length === 0" class="col-empty">
+                      <span class="empty-icon">📄</span>
+                      <span>无子文件夹</span>
+                      <span class="empty-sub" v-if="col.path === currentPath">(当前目录内容见下方列表)</span>
+                    </div>
+                    <div
+                      v-else
+                      v-for="item in col.items"
+                      :key="item.path"
+                      class="column-item"
+                      :class="{ active: item.selected, 'is-parent': item.isDir }"
+                      @click="handleColumnItemClick(item, colIdx)"
                     >
-                      <span>📁</span>
-                      <span class="sib-name">{{ sib.name }}</span>
+                      <span class="ci-icon">📁</span>
+                      <span class="ci-name" :title="item.name">{{ item.name }}</span>
+                      <span class="ci-arrow" v-if="item.isDir">›</span>
                     </div>
                   </div>
                 </div>
-              </template>
-            </div>
-            
-            <div class="bar-actions">
-              <!-- 切换分栏视图开关 -->
-              <button 
-                class="miller-toggle-btn"
-                :class="{ active: showMillerColumns }"
-                @click="showMillerColumns = !showMillerColumns"
-                title="切换/展开多级分栏流转导航"
-              >
-                <span>🗂️</span>
-                <span>{{ showMillerColumns ? '收起多级分栏' : '多级分栏流转' }}</span>
-              </button>
-
-              <span v-if="loadingFolder" class="folder-loading-tag">⚡ 正在读取目录...</span>
-              <button 
-                v-if="pathStack.length > 1" 
-                class="up-btn" 
-                @click="navigateUp"
-                title="返回上一级"
-              >
-                ⬆ 返回上一级
-              </button>
-              <div class="file-summary">
-                共 <b>{{ displayFiles.length }}</b> 个项目
               </div>
             </div>
-          </div>
 
-          <!-- 核心新增：文件列表上方多级分栏流转视图 (macOS Finder Miller Columns) -->
-          <div v-if="showMillerColumns" class="miller-columns-container">
-            <div class="miller-columns-scroll" ref="millerScrollRef">
-              <div 
-                v-for="(col, colIdx) in columnChain" 
-                :key="col.path"
-                class="miller-column"
+            <!-- 加载中骨架态反馈 -->
+            <div v-if="loadingFolder" key="loading" class="loading-skeleton-box">
+              <div class="skeleton-shimmer"></div>
+              <div class="skeleton-text">正在快速读取 NAS 目录结构，请稍候...</div>
+            </div>
+
+            <!-- 真正修复 Bug 1：子目录为空时，清晰显示空文件夹，绝不穿透回退到根目录文件 -->
+            <div v-else-if="currentPath !== ROOT_PATH && displayFiles.length === 0" key="empty" class="empty-folder-box">
+              <span class="empty-folder-icon">📂</span>
+              <h4>此文件夹为空</h4>
+              <p>未在该文件夹下检索到任何子文件或媒体</p>
+            </div>
+
+            <!-- 网格卡片视图 -->
+            <div v-else-if="viewMode === 'grid'" key="grid" class="files-grid">
+              <div
+                v-for="(file, idx) in displayFiles"
+                :key="file.id || file.name"
+                class="file-card"
+                :style="{ '--i': idx % 12 }"
+                v-smart-preload="file.thumbnail"
+                @click="handleFileClick(file)"
               >
-                <div class="column-header">
-                  <span class="ch-icon">📁</span>
-                  <span class="ch-title" :title="col.name">{{ col.name }}</span>
-                  <span class="ch-count">{{ col.items.length }}</span>
-                </div>
-                <div class="column-items-list">
-                  <div v-if="col.loading" class="col-loading">读取中...</div>
-                  <div v-else-if="col.items.length === 0" class="col-empty">
-                    <span class="empty-icon">📄</span>
-                    <span>无子文件夹</span>
-                    <span class="empty-sub" v-if="col.path === currentPath">(当前目录内容见下方列表)</span>
+                <div class="card-preview">
+                  <img
+                    v-if="file.thumbnail"
+                    :src="file.thumbnail"
+                    :alt="file.name"
+                    class="preview-thumb"
+                    loading="lazy"
+                  />
+                  <span v-else class="preview-emoji">{{ getFileEmoji(file) }}</span>
+
+                  <div v-if="file.type === 'video'" class="video-play-tag">
+                    <span>▶ 播放</span>
                   </div>
-                  <div
-                    v-else
-                    v-for="item in col.items"
-                    :key="item.path"
-                    class="column-item"
-                    :class="{ active: item.selected, 'is-parent': item.isDir }"
-                    @click="handleColumnItemClick(item, colIdx)"
+
+                  <!-- 卡片悬浮操作按钮 -->
+                  <div class="card-actions" @click.stop>
+                    <button class="ca-btn" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
+                    <button class="ca-btn" @click="downloadFile(file)" title="下载">📥</button>
+                    <button class="ca-btn danger" @click="deleteFile(file)" title="删除">🗑</button>
+                  </div>
+                </div>
+                <div class="card-meta">
+                  <div class="file-title" :title="file.name">{{ file.name }}</div>
+                  <div class="file-info-row">
+                    <span>{{ formatSize(file.size) }}</span>
+                    <span>{{ formatDate(file.modified_time) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 紧凑列表视图 -->
+            <div v-else class="files-table-box">
+              <table class="files-table">
+                <thead>
+                  <tr>
+                    <th style="width: 42%;">文件名</th>
+                    <th style="width: 12%;">类型</th>
+                    <th style="width: 15%;">大小</th>
+                    <th style="width: 18%;">修改时间</th>
+                    <th style="width: 13%;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="file in displayFiles"
+                    :key="file.id || file.name"
+                    class="table-row"
+                    @click="handleFileClick(file)"
                   >
-                    <span class="ci-icon">📁</span>
-                    <span class="ci-name" :title="item.name">{{ item.name }}</span>
-                    <span class="ci-arrow" v-if="item.isDir">›</span>
-                  </div>
-                </div>
-              </div>
+                    <td class="name-cell">
+                      <span class="cell-icon">{{ getFileEmoji(file) }}</span>
+                      <span class="cell-name" :title="file.name">{{ file.name }}</span>
+                    </td>
+                    <td><span class="type-tag">{{ file.type }}</span></td>
+                    <td class="font-mono">{{ formatSize(file.size) }}</td>
+                    <td class="time-text">{{ formatDate(file.modified_time) }}</td>
+                    <td class="ops-cell" @click.stop>
+                      <button class="row-op" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
+                      <button class="row-op" @click="downloadFile(file)" title="下载">📥</button>
+                      <button class="row-op danger" @click="deleteFile(file)" title="删除">🗑</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          <!-- 加载中骨架态反馈 -->
-          <div v-if="loadingFolder" class="loading-skeleton-box">
-            <div class="skeleton-shimmer"></div>
-            <div class="skeleton-text">正在快速读取 NAS 目录结构，请稍候...</div>
-          </div>
-
-          <!-- 真正修复 Bug 1：子目录为空时，清晰显示空文件夹，绝不穿透回退到根目录文件 -->
-          <div v-else-if="currentPath !== ROOT_PATH && displayFiles.length === 0" class="empty-folder-box">
-            <span class="empty-folder-icon">📂</span>
-            <h4>此文件夹为空</h4>
-            <p>未在该文件夹下检索到任何子文件或媒体</p>
-          </div>
-
-          <!-- 网格卡片视图 -->
-          <div v-else-if="viewMode === 'grid'" class="files-grid">
-            <div
-              v-for="file in displayFiles"
-              :key="file.id || file.name"
-              class="file-card"
-              v-smart-preload="file.thumbnail"
-              @click="handleFileClick(file)"
-            >
-              <div class="card-preview">
-                <img
-                  v-if="file.thumbnail"
-                  :src="file.thumbnail"
-                  :alt="file.name"
-                  class="preview-thumb"
-                  loading="lazy"
-                />
-                <span v-else class="preview-emoji">{{ getFileEmoji(file) }}</span>
-
-                <div v-if="file.type === 'video'" class="video-play-tag">
-                  <span>▶ 播放</span>
-                </div>
-
-                <!-- 卡片悬浮操作按钮 -->
-                <div class="card-actions" @click.stop>
-                  <button class="ca-btn" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
-                  <button class="ca-btn" @click="downloadFile(file)" title="下载">📥</button>
-                  <button class="ca-btn danger" @click="deleteFile(file)" title="删除">🗑</button>
-                </div>
-              </div>
-              <div class="card-meta">
-                <div class="file-title" :title="file.name">{{ file.name }}</div>
-                <div class="file-info-row">
-                  <span>{{ formatSize(file.size) }}</span>
-                  <span>{{ formatDate(file.modified_time) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 紧凑列表视图 -->
-          <div v-else class="files-table-box">
-            <table class="files-table">
-              <thead>
-                <tr>
-                  <th style="width: 42%;">文件名</th>
-                  <th style="width: 12%;">类型</th>
-                  <th style="width: 15%;">大小</th>
-                  <th style="width: 18%;">修改时间</th>
-                  <th style="width: 13%;">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="file in displayFiles"
-                  :key="file.id || file.name"
-                  class="table-row"
-                  @click="handleFileClick(file)"
-                >
-                  <td class="name-cell">
-                    <span class="cell-icon">{{ getFileEmoji(file) }}</span>
-                    <span class="cell-name" :title="file.name">{{ file.name }}</span>
-                  </td>
-                  <td><span class="type-tag">{{ file.type }}</span></td>
-                  <td class="font-mono">{{ formatSize(file.size) }}</td>
-                  <td class="time-text">{{ formatDate(file.modified_time) }}</td>
-                  <td class="ops-cell" @click.stop>
-                    <button class="row-op" @click="$emit('file-detail', file)" title="详情">ℹ️</button>
-                    <button class="row-op" @click="downloadFile(file)" title="下载">📥</button>
-                    <button class="row-op danger" @click="deleteFile(file)" title="删除">🗑</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -1050,7 +1053,6 @@ function handleFileClick(file) {
   align-items: center;
   justify-content: center;
   z-index: 1200;
-  animation: fadeIn 0.2s ease-out;
 }
 
 .explorer-modal {
@@ -1875,7 +1877,7 @@ html.theme-mica .sidebar-tree {
   padding: 3px 8px;
   border-radius: 6px;
   font-weight: 600;
-  animation: pulse 1.2s infinite ease-in-out;
+  animation: miPulse 1.2s infinite ease-in-out;
 }
 
 .loading-skeleton-box {
@@ -1885,6 +1887,7 @@ html.theme-mica .sidebar-tree {
   justify-content: center;
   padding: 60px 0;
   gap: 16px;
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
 }
 
 .skeleton-shimmer {  /* 微光扫过动画底 */
@@ -1907,16 +1910,14 @@ html.theme-mica .sidebar-tree {
   100% { background-position: -200% 0; }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
 /* 网格卡片 */
 .files-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
+  /* 网格↔列表、加载态→内容、进出子目录时本节点会被重建，
+     动画随之重播，避免整块内容硬切。 */
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
 }
 
 .file-card {
@@ -1928,6 +1929,14 @@ html.theme-mica .sidebar-tree {
   transition: all 0.2s;
   display: flex;
   flex-direction: column;
+}
+
+/* 文件网格逐卡淡入；--i 由模板注入，取模避免长目录延迟过长。
+   用 backwards 而不是 both：both 会让结束帧的 transform 常驻，
+   覆盖掉 .file-card:hover 的上浮位移。 */
+.files-grid .file-card {
+  animation: miRiseIn var(--mi-dur-slow) var(--mi-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
 }
 
 .file-card:hover {
@@ -1999,6 +2008,7 @@ html.theme-mica .sidebar-tree {
   border: 1px solid var(--mi-border);
   border-radius: 10px;
   overflow: hidden;
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
 }
 
 .files-table {

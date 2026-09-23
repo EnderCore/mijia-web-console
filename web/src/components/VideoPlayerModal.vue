@@ -1,103 +1,105 @@
 <template>
-  <div v-if="visible" class="player-backdrop" @click.self="handleClose">
-    <div class="player-container">
-      <!-- 播放器顶部标题栏与分辨率控制 -->
-      <div class="player-header">
-        <div class="player-title">
-          <span class="icon">🎬</span>
-          <span class="file-name" :title="video?.name">{{ video?.name || '视频播放' }}</span>
-          <span v-if="video?.size" class="file-badge">{{ formatSize(video.size) }}</span>
-        </div>
-
-        <div class="header-controls">
-          <!-- 字幕选择：来自 NAS player/subtitle_get_list，空列表时隐藏 -->
-          <div v-if="subtitleList.length > 0" class="resolution-dropdown">
-            <button class="res-btn" @click="showSubMenu = !showSubMenu">
-              <span class="current-res">💬 {{ currentSubtitle ? currentSubtitle.name : '字幕' }}</span>
-              <span class="arrow">▼</span>
-            </button>
-            <div v-if="showSubMenu" class="res-menu">
-              <div
-                class="res-item" :class="{ active: !currentSubtitle }"
-                @click="selectSubtitle(null)"
-              ><span class="q-label">关闭字幕</span></div>
-              <div
-                v-for="(s, i) in subtitleList" :key="i"
-                class="res-item" :class="{ active: currentSubtitle === s }"
-                @click="selectSubtitle(s)"
-              >
-                <span class="q-label">{{ s.name || s.path?.split('/').pop() || '字幕 ' + (i+1) }}</span>
-                <span class="q-badge">{{ s.type || s.language || '' }}</span>
-              </div>
-            </div>
+  <Transition name="mi-modal">
+    <div v-if="visible" class="player-backdrop" @click.self="handleClose">
+      <div class="player-container">
+        <!-- 播放器顶部标题栏与分辨率控制 -->
+        <div class="player-header">
+          <div class="player-title">
+            <span class="icon">🎬</span>
+            <span class="file-name" :title="video?.name">{{ video?.name || '视频播放' }}</span>
+            <span v-if="video?.size" class="file-badge">{{ formatSize(video.size) }}</span>
           </div>
 
-          <!-- 分辨率切换器：档位来自 NAS 转码接口，取不到时只保留原画 -->
-          <div class="resolution-dropdown">
-            <button class="res-btn" @click="showResMenu = !showResMenu">
-              <span class="current-res">{{ currentQuality.label }}</span>
-              <span class="arrow">▼</span>
-            </button>
-            <div v-if="showResMenu" class="res-menu">
-              <div 
-                v-for="q in qualityOptions" 
-                :key="q.key" 
-                class="res-item"
-                :class="{ active: currentQuality.key === q.key }"
-                @click="selectQuality(q)"
-              >
-                <span class="q-label">{{ q.label }}</span>
-                <span class="q-badge" :class="q.type">{{ q.badge }}</span>
+          <div class="header-controls">
+            <!-- 字幕选择：来自 NAS player/subtitle_get_list，空列表时隐藏 -->
+            <div v-if="subtitleList.length > 0" class="resolution-dropdown">
+              <button class="res-btn" @click="showSubMenu = !showSubMenu">
+                <span class="current-res">💬 {{ currentSubtitle ? currentSubtitle.name : '字幕' }}</span>
+                <span class="arrow">▼</span>
+              </button>
+              <div v-if="showSubMenu" class="res-menu">
+                <div
+                  class="res-item" :class="{ active: !currentSubtitle }"
+                  @click="selectSubtitle(null)"
+                ><span class="q-label">关闭字幕</span></div>
+                <div
+                  v-for="(s, i) in subtitleList" :key="i"
+                  class="res-item" :class="{ active: currentSubtitle === s }"
+                  @click="selectSubtitle(s)"
+                >
+                  <span class="q-label">{{ s.name || s.path?.split('/').pop() || '字幕 ' + (i+1) }}</span>
+                  <span class="q-badge">{{ s.type || s.language || '' }}</span>
+                </div>
               </div>
             </div>
+
+            <!-- 分辨率切换器：档位来自 NAS 转码接口，取不到时只保留原画 -->
+            <div class="resolution-dropdown">
+              <button class="res-btn" @click="showResMenu = !showResMenu">
+                <span class="current-res">{{ currentQuality.label }}</span>
+                <span class="arrow">▼</span>
+              </button>
+              <div v-if="showResMenu" class="res-menu">
+                <div 
+                  v-for="q in qualityOptions" 
+                  :key="q.key" 
+                  class="res-item"
+                  :class="{ active: currentQuality.key === q.key }"
+                  @click="selectQuality(q)"
+                >
+                  <span class="q-label">{{ q.label }}</span>
+                  <span class="q-badge" :class="q.type">{{ q.badge }}</span>
+                </div>
+              </div>
+            </div>
+
+            <button class="close-btn" @click="handleClose" title="关闭">✕</button>
+          </div>
+        </div>
+
+        <!-- 视频播放主体 -->
+        <div class="player-body">
+          <video
+            ref="videoEl"
+            class="video-js vjs-default-skin vjs-big-play-centered"
+            controls
+            preload="auto"
+            playsinline
+          ></video>
+
+          <!-- 播放器悬浮转码状态提示 -->
+          <div v-if="transcodingNotice" class="transcode-toast">
+            <span>⚡ {{ transcodingNotice }}</span>
           </div>
 
-          <button class="close-btn" @click="handleClose" title="关闭">✕</button>
-        </div>
-      </div>
-
-      <!-- 视频播放主体 -->
-      <div class="player-body">
-        <video
-          ref="videoEl"
-          class="video-js vjs-default-skin vjs-big-play-centered"
-          controls
-          preload="auto"
-          playsinline
-        ></video>
-
-        <!-- 播放器悬浮转码状态提示 -->
-        <div v-if="transcodingNotice" class="transcode-toast">
-          <span>⚡ {{ transcodingNotice }}</span>
+          <!-- 解码失败/自动兜底提示：此前失败时界面毫无反馈，
+               用户只看到黑屏，连「能不能切转码流」都不知道 -->
+          <div v-if="playerError" class="player-error-toast">
+            <span class="err-icon">⚠️</span>
+            <span class="err-text">{{ playerError }}</span>
+            <button
+              v-if="qualityOptions.length > 1"
+              class="err-action"
+              @click="selectQuality(qualityOptions.find(q => q.key !== 'origin') || qualityOptions[0])"
+            >切换转码流</button>
+            <button v-else class="err-action" @click="reloadCurrent">重试</button>
+          </div>
         </div>
 
-        <!-- 解码失败/自动兜底提示：此前失败时界面毫无反馈，
-             用户只看到黑屏，连「能不能切转码流」都不知道 -->
-        <div v-if="playerError" class="player-error-toast">
-          <span class="err-icon">⚠️</span>
-          <span class="err-text">{{ playerError }}</span>
-          <button
-            v-if="qualityOptions.length > 1"
-            class="err-action"
-            @click="selectQuality(qualityOptions.find(q => q.key !== 'origin') || qualityOptions[0])"
-          >切换转码流</button>
-          <button v-else class="err-action" @click="reloadCurrent">重试</button>
-        </div>
-      </div>
-
-      <!-- 底部播放信息栏 -->
-      <div class="player-footer">
-        <div class="footer-left">
-          <span>模式: <b>{{ currentQuality.sourceType }}</b></span>
-          <span class="dot">·</span>
-          <span>路径: <code class="path-code">{{ mask(video?.path || video?.name, 'path') }}</code></span>
-        </div>
-        <div class="footer-right">
-          <span v-if="resolutionError" class="res-warn">{{ resolutionError }}</span>
+        <!-- 底部播放信息栏 -->
+        <div class="player-footer">
+          <div class="footer-left">
+            <span>模式: <b>{{ currentQuality.sourceType }}</b></span>
+            <span class="dot">·</span>
+            <span>路径: <code class="path-code">{{ mask(video?.path || video?.name, 'path') }}</code></span>
+          </div>
+          <div class="footer-right">
+            <span v-if="resolutionError" class="res-warn">{{ resolutionError }}</span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -457,7 +459,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   z-index: 1300;
-  animation: fadeIn 0.25s ease-out;
 }
 
 .player-container {

@@ -1,530 +1,532 @@
 <template>
-  <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
-    <div class="custom-modal theme-modal-v2 mi-surface">
-      <!-- 模态框顶部 -->
-      <div class="modal-hdr-v2">
-        <div class="hdr-left">
-          <div class="hdr-badge-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
-              <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
-              <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
-              <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
-              <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/>
-            </svg>
-          </div>
-          <div class="hdr-text">
-            <h4>个性化外观与主题美化</h4>
-            <p>定制专属米家数据终端视觉风格与质感滤镜</p>
-          </div>
-        </div>
-        <button class="close-btn-v2" @click="$emit('close')" title="关闭">✕</button>
-      </div>
-
-      <!-- 选项卡导航导航条 -->
-      <div class="theme-nav-tabs">
-        <button
-          v-for="tab in navTabs"
-          :key="tab.id"
-          class="theme-tab-btn"
-          :class="{ active: currentTab === tab.id }"
-          @click="currentTab = tab.id"
-        >
-          <span class="tab-icon">{{ tab.icon }}</span>
-          <span>{{ tab.label }}</span>
-        </button>
-      </div>
-
-      <!-- 主设置滚动区域 -->
-      <div class="theme-modal-body">
-        <!-- 实时微缩预览栏 (Mini Preview Stage) -->
-        <div class="preview-mini-stage">
-          <div class="stage-label">
-            <span>实时视觉预览</span>
-            <span class="preview-tag">{{ currentTheme.name }}</span>
-          </div>
-          <div class="stage-canvas" :class="[`theme-${currentTheme.id}`, { dark: isDarkActive }]">
-            <!-- 模拟顶部 -->
-            <div class="mock-header">
-              <div class="mock-logo"></div>
-              <div class="mock-title-bar"></div>
-              <div class="mock-pill" :style="{ backgroundColor: currentTheme.accentColor }">在线</div>
+  <Transition name="mi-modal">
+    <div v-if="visible" class="modal-backdrop" @click.self="$emit('close')">
+      <div class="custom-modal theme-modal-v2 mi-surface">
+        <!-- 模态框顶部 -->
+        <div class="modal-hdr-v2">
+          <div class="hdr-left">
+            <div class="hdr-badge-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/>
+              </svg>
             </div>
-            <!-- 模拟两列卡片 -->
-            <div class="mock-cards-row">
-              <div class="mock-card card-left">
-                <div class="mock-card-hdr">
-                  <div class="mock-card-dot" :style="{ backgroundColor: currentTheme.accentColor }"></div>
-                  <div class="mock-bar w-40"></div>
-                </div>
-                <div class="mock-pie" :style="{ borderColor: currentTheme.accentColor }"></div>
-                <div class="mock-bar w-80"></div>
-              </div>
-              <div class="mock-card card-right">
-                <div class="mock-card-hdr">
-                  <div class="mock-bar w-60"></div>
-                </div>
-                <div class="mock-grid">
-                  <div class="mock-grid-item" v-for="i in 4" :key="i">
-                    <div class="mock-icon-sq" :style="{ backgroundColor: i === 1 ? currentTheme.accentColor : '' }"></div>
-                    <div class="mock-bar w-50"></div>
-                  </div>
-                </div>
-              </div>
+            <div class="hdr-text">
+              <h4>个性化外观与主题美化</h4>
+              <p>定制专属米家数据终端视觉风格与质感滤镜</p>
             </div>
           </div>
+          <button class="close-btn-v2" @click="$emit('close')" title="关闭">✕</button>
         </div>
 
-        <!-- 选项卡 1：预设风格与色调 -->
-        <div v-show="currentTab === 'presets'" class="tab-pane">
-          <!-- 明暗色彩模式 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>🌓 色彩光暗模式</span>
-                <span class="badge-sub">全组件自适应</span>
-              </div>
-            </div>
-            <div class="mode-cards-grid">
-              <div
-                class="mode-card"
-                :class="{ active: currentTheme.colorMode === 'light' }"
-                @click="setColorMode('light')"
-              >
-                <div class="mode-card-preview light-pv">
-                  <div class="pv-bar"></div>
-                  <div class="pv-box"></div>
-                </div>
-                <div class="mode-info">
-                  <span class="mode-name">☀️ 浅色明亮</span>
-                  <span class="mode-desc">清爽经典极简白</span>
-                </div>
-              </div>
-
-              <div
-                class="mode-card"
-                :class="{ active: currentTheme.colorMode === 'dark' }"
-                @click="setColorMode('dark')"
-              >
-                <div class="mode-card-preview dark-pv">
-                  <div class="pv-bar"></div>
-                  <div class="pv-box"></div>
-                </div>
-                <div class="mode-info">
-                  <span class="mode-name">🌙 深邃暗夜</span>
-                  <span class="mode-desc">沉浸黑曜低功耗</span>
-                </div>
-              </div>
-
-              <div
-                class="mode-card"
-                :class="{ active: currentTheme.colorMode === 'auto' }"
-                @click="setColorMode('auto')"
-              >
-                <div class="mode-card-preview auto-pv">
-                  <div class="pv-half-light"></div>
-                  <div class="pv-half-dark"></div>
-                </div>
-                <div class="mode-info">
-                  <span class="mode-name">💻 跟随系统</span>
-                  <span class="mode-desc">自动匹配操作系统</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 精选预设风格 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>✨ 预设视觉风格库</span>
-                <span class="badge-sub">专业调色与动效体系</span>
-              </div>
-            </div>
-            <div class="presets-flow-grid">
-              <div
-                v-for="(p, key) in PRESETS"
-                :key="key"
-                class="preset-item-card"
-                :class="{ active: currentTheme.id === p.id }"
-                @click="applyPreset(key)"
-              >
-                <div class="preset-banner" :class="`banner-${p.id}`">
-                  <span class="preset-tag-pill">{{ p.tag }}</span>
-                  <div class="preset-banner-content">
-                    <span class="banner-accent-dot" :style="{ backgroundColor: p.accentColor }"></span>
-                  </div>
-                </div>
-                <div class="preset-body">
-                  <div class="preset-header-row">
-                    <span class="preset-title">{{ p.name }}</span>
-                    <span v-if="currentTheme.id === p.id" class="using-badge">当前使用</span>
-                  </div>
-                  <p class="preset-expl">{{ p.description }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 强调色选择器 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>🎨 主题强调色 (Accent Color)</span>
-                <span class="badge-sub">按钮、徽标与高光</span>
-              </div>
-              <div class="color-picker-wrapper">
-                <span class="color-hex-label">{{ currentTheme.accentColor }}</span>
-                <input
-                  type="color"
-                  v-model="currentTheme.accentColor"
-                  @input="handleAccentChange"
-                  class="native-color-picker"
-                  title="选取自定义颜色"
-                />
-              </div>
-            </div>
-            <div class="palette-row">
-              <button
-                v-for="item in ACCENT_PALETTE"
-                :key="item.value"
-                class="palette-swatch"
-                :class="{ active: currentTheme.accentColor.toLowerCase() === item.value.toLowerCase() }"
-                :style="{ backgroundColor: item.value }"
-                :title="item.name"
-                @click="setAccentColor(item.value)"
-              >
-                <span v-if="currentTheme.accentColor.toLowerCase() === item.value.toLowerCase()" class="check-mark">✓</span>
-              </button>
-            </div>
-          </div>
+        <!-- 选项卡导航导航条 -->
+        <div class="theme-nav-tabs">
+          <button
+            v-for="tab in navTabs"
+            :key="tab.id"
+            class="theme-tab-btn"
+            :class="{ active: currentTab === tab.id }"
+            @click="currentTab = tab.id"
+          >
+            <span class="tab-icon">{{ tab.icon }}</span>
+            <span>{{ tab.label }}</span>
+          </button>
         </div>
 
-        <!-- 选项卡 2：壁纸与背景 -->
-        <div v-show="currentTab === 'wallpaper'" class="tab-pane">
-          <!-- 内置精美渐变壁纸库 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>🌌 内置艺术背景库</span>
-                <span class="badge-sub">免下载即点即换</span>
-              </div>
+        <!-- 主设置滚动区域 -->
+        <div class="theme-modal-body">
+          <!-- 实时微缩预览栏 (Mini Preview Stage) -->
+          <div class="preview-mini-stage">
+            <div class="stage-label">
+              <span>实时视觉预览</span>
+              <span class="preview-tag">{{ currentTheme.name }}</span>
             </div>
-            <div class="preset-wallpapers-grid">
-              <div
-                v-for="bg in PRESET_WALLPAPERS"
-                :key="bg.id"
-                class="wallpaper-item"
-                :class="{ active: currentTheme.presetBgId === bg.id && !currentWallpaperUrl }"
-                :style="{ background: bg.css }"
-                @click="handleSelectPresetBg(bg.id)"
-              >
-                <span class="wallpaper-name">{{ bg.name }}</span>
-                <span v-if="currentTheme.presetBgId === bg.id && !currentWallpaperUrl" class="wallpaper-active-icon">✓</span>
+            <div class="stage-canvas" :class="[`theme-${currentTheme.id}`, { dark: isDarkActive }]">
+              <!-- 模拟顶部 -->
+              <div class="mock-header">
+                <div class="mock-logo"></div>
+                <div class="mock-title-bar"></div>
+                <div class="mock-pill" :style="{ backgroundColor: currentTheme.accentColor }">在线</div>
+              </div>
+              <!-- 模拟两列卡片 -->
+              <div class="mock-cards-row">
+                <div class="mock-card card-left">
+                  <div class="mock-card-hdr">
+                    <div class="mock-card-dot" :style="{ backgroundColor: currentTheme.accentColor }"></div>
+                    <div class="mock-bar w-40"></div>
+                  </div>
+                  <div class="mock-pie" :style="{ borderColor: currentTheme.accentColor }"></div>
+                  <div class="mock-bar w-80"></div>
+                </div>
+                <div class="mock-card card-right">
+                  <div class="mock-card-hdr">
+                    <div class="mock-bar w-60"></div>
+                  </div>
+                  <div class="mock-grid">
+                    <div class="mock-grid-item" v-for="i in 4" :key="i">
+                      <div class="mock-icon-sq" :style="{ backgroundColor: i === 1 ? currentTheme.accentColor : '' }"></div>
+                      <div class="mock-bar w-50"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- 自定义上传本地背景 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>🖼️ 本地壁纸上传</span>
-                <span class="badge-sub">存储在浏览器 IndexedDB，不耗 NAS 空间</span>
+          <!-- 选项卡 1：预设风格与色调 -->
+          <div v-show="currentTab === 'presets'" class="tab-pane">
+            <!-- 明暗色彩模式 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>🌓 色彩光暗模式</span>
+                  <span class="badge-sub">全组件自适应</span>
+                </div>
               </div>
-            </div>
-
-            <div class="upload-area-box" :class="{ 'has-file': !!currentWallpaperUrl }">
-              <input
-                type="file"
-                ref="fileInputRef"
-                accept="image/*"
-                style="display: none"
-                @change="handleImageSelect"
-              />
-              
-              <div v-if="currentWallpaperUrl" class="active-wallpaper-preview">
-                <img :src="currentWallpaperUrl" alt="已加载壁纸" class="thumb-img" />
-                <div class="thumb-meta">
-                  <div class="thumb-status">
-                    <span class="status-indicator"></span>
-                    <strong>已加载自定义本地壁纸</strong>
+              <div class="mode-cards-grid">
+                <div
+                  class="mode-card"
+                  :class="{ active: currentTheme.colorMode === 'light' }"
+                  @click="setColorMode('light')"
+                >
+                  <div class="mode-card-preview light-pv">
+                    <div class="pv-bar"></div>
+                    <div class="pv-box"></div>
                   </div>
-                  <p class="thumb-tip">当前正在使用您上传的高清壁纸作为全局底盘。</p>
-                  <div class="thumb-actions">
-                    <button class="small-action-btn" @click="triggerUpload">🔄 替换壁纸</button>
-                    <button class="small-action-btn danger" @click="handleClearBg">🗑️ 移除壁纸</button>
+                  <div class="mode-info">
+                    <span class="mode-name">☀️ 浅色明亮</span>
+                    <span class="mode-desc">清爽经典极简白</span>
                   </div>
                 </div>
-              </div>
 
-              <div v-else class="upload-dropzone" @click="triggerUpload">
-                <div class="dropzone-icon">📁</div>
-                <div class="dropzone-text">
-                  <strong>点击选择本地图片作为背景</strong>
-                  <span>支持 JPG / PNG / WEBP / AVIF / SVG；iPhone 的 HEIC 需先转成 JPG</span>
+                <div
+                  class="mode-card"
+                  :class="{ active: currentTheme.colorMode === 'dark' }"
+                  @click="setColorMode('dark')"
+                >
+                  <div class="mode-card-preview dark-pv">
+                    <div class="pv-bar"></div>
+                    <div class="pv-box"></div>
+                  </div>
+                  <div class="mode-info">
+                    <span class="mode-name">🌙 深邃暗夜</span>
+                    <span class="mode-desc">沉浸黑曜低功耗</span>
+                  </div>
                 </div>
-              </div>
 
-              <!-- 上传结果反馈：格式不支持、已自动压缩等，都要让用户看得见 -->
-              <div
-                v-if="wallpaperNotice"
-                class="notice-banner"
-                :class="{ error: wallpaperNoticeError }"
-              >
-                <span>{{ wallpaperNotice }}</span>
+                <div
+                  class="mode-card"
+                  :class="{ active: currentTheme.colorMode === 'auto' }"
+                  @click="setColorMode('auto')"
+                >
+                  <div class="mode-card-preview auto-pv">
+                    <div class="pv-half-light"></div>
+                    <div class="pv-half-dark"></div>
+                  </div>
+                  <div class="mode-info">
+                    <span class="mode-name">💻 跟随系统</span>
+                    <span class="mode-desc">自动匹配操作系统</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- 背景滤镜微调 -->
-            <div v-if="currentWallpaperUrl || currentTheme.bgEnabled" class="slider-box-wrapper">
-              <div class="slider-row-modern">
-                <div class="slider-info">
-                  <span class="s-label">背景亮度</span>
-                  <span class="s-val">{{ currentTheme.bgBrightness }}%</span>
+            <!-- 精选预设风格 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>✨ 预设视觉风格库</span>
+                  <span class="badge-sub">专业调色与动效体系</span>
                 </div>
-                <input
-                  type="range"
-                  min="20"
-                  max="150"
-                  v-model.number="currentTheme.bgBrightness"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
               </div>
-
-              <div class="slider-row-modern">
-                <div class="slider-info">
-                  <span class="s-label">背景高斯模糊</span>
-                  <span class="s-val">{{ currentTheme.bgBlur }}px</span>
+              <div class="presets-flow-grid">
+                <div
+                  v-for="(p, key) in PRESETS"
+                  :key="key"
+                  class="preset-item-card"
+                  :class="{ active: currentTheme.id === p.id }"
+                  @click="applyPreset(key)"
+                >
+                  <div class="preset-banner" :class="`banner-${p.id}`">
+                    <span class="preset-tag-pill">{{ p.tag }}</span>
+                    <div class="preset-banner-content">
+                      <span class="banner-accent-dot" :style="{ backgroundColor: p.accentColor }"></span>
+                    </div>
+                  </div>
+                  <div class="preset-body">
+                    <div class="preset-header-row">
+                      <span class="preset-title">{{ p.name }}</span>
+                      <span v-if="currentTheme.id === p.id" class="using-badge">当前使用</span>
+                    </div>
+                    <p class="preset-expl">{{ p.description }}</p>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="35"
-                  v-model.number="currentTheme.bgBlur"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
-              </div>
-
-              <div class="slider-row-modern">
-                <div class="slider-info">
-                  <span class="s-label">背景不透明度</span>
-                  <span class="s-val">{{ currentTheme.bgOpacity }}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  v-model.number="currentTheme.bgOpacity"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 选项卡 3：磨砂玻璃与微调 -->
-        <div v-show="currentTab === 'glass'" class="tab-pane">
-          <!-- 磨砂模式架构选择 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>💎 磨砂玻璃架构模式</span>
-                <span class="badge-sub">选择毛玻璃透光层级</span>
               </div>
             </div>
 
-            <div class="scope-options-grid">
-              <div
-                class="scope-card"
-                :class="{ active: currentTheme.blurScope === 'controls_only' }"
-                @click="setBlurScope('controls_only')"
-              >
-                <div class="scope-radio-row">
+            <!-- 强调色选择器 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>🎨 主题强调色 (Accent Color)</span>
+                  <span class="badge-sub">按钮、徽标与高光</span>
+                </div>
+                <div class="color-picker-wrapper">
+                  <span class="color-hex-label">{{ currentTheme.accentColor }}</span>
                   <input
-                    type="radio"
-                    value="controls_only"
-                    v-model="currentTheme.blurScope"
-                    @change="handleCustomSlider"
+                    type="color"
+                    v-model="currentTheme.accentColor"
+                    @input="handleAccentChange"
+                    class="native-color-picker"
+                    title="选取自定义颜色"
                   />
-                  <strong>仅按钮与功能控件磨砂 (推荐)</strong>
                 </div>
-                <p class="scope-desc">
-                  大容器高透不模糊，底盘壁纸完整高清呈现，所有按钮、标签、浮层具有晶莹剔透的亚克力磨砂质感。
-                </p>
               </div>
-
-              <div
-                class="scope-card"
-                :class="{ active: currentTheme.blurScope === 'all_containers' }"
-                @click="setBlurScope('all_containers')"
-              >
-                <div class="scope-radio-row">
-                  <input
-                    type="radio"
-                    value="all_containers"
-                    v-model="currentTheme.blurScope"
-                    @change="handleCustomSlider"
-                  />
-                  <strong>全局卡片整体磨砂</strong>
-                </div>
-                <p class="scope-desc">
-                  仪表盘、监控卡片及应用网格等大面板整体施加深邃的高斯模糊层，营造厚重的悬浮磨砂玻璃视效。
-                </p>
+              <div class="palette-row">
+                <button
+                  v-for="item in ACCENT_PALETTE"
+                  :key="item.value"
+                  class="palette-swatch"
+                  :class="{ active: currentTheme.accentColor.toLowerCase() === item.value.toLowerCase() }"
+                  :style="{ backgroundColor: item.value }"
+                  :title="item.name"
+                  @click="setAccentColor(item.value)"
+                >
+                  <span v-if="currentTheme.accentColor.toLowerCase() === item.value.toLowerCase()" class="check-mark">✓</span>
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- 质感参数滑块群 -->
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>🎛️ 亚克力质感参数精确调节</span>
+          <!-- 选项卡 2：壁纸与背景 -->
+          <div v-show="currentTab === 'wallpaper'" class="tab-pane">
+            <!-- 内置精美渐变壁纸库 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>🌌 内置艺术背景库</span>
+                  <span class="badge-sub">免下载即点即换</span>
+                </div>
+              </div>
+              <div class="preset-wallpapers-grid">
+                <div
+                  v-for="bg in PRESET_WALLPAPERS"
+                  :key="bg.id"
+                  class="wallpaper-item"
+                  :class="{ active: currentTheme.presetBgId === bg.id && !currentWallpaperUrl }"
+                  :style="{ background: bg.css }"
+                  @click="handleSelectPresetBg(bg.id)"
+                >
+                  <span class="wallpaper-name">{{ bg.name }}</span>
+                  <span v-if="currentTheme.presetBgId === bg.id && !currentWallpaperUrl" class="wallpaper-active-icon">✓</span>
+                </div>
               </div>
             </div>
 
-            <div class="slider-box-wrapper">
-              <div class="slider-row-modern" v-if="currentTheme.blurScope === 'controls_only'">
-                <div class="slider-info">
-                  <span class="s-label">控件磨砂半径 (Control Blur)</span>
-                  <span class="s-val">{{ currentTheme.controlBlur ?? 16 }}px</span>
+            <!-- 自定义上传本地背景 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>🖼️ 本地壁纸上传</span>
+                  <span class="badge-sub">存储在浏览器 IndexedDB，不耗 NAS 空间</span>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="32"
-                  v-model.number="currentTheme.controlBlur"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
               </div>
 
-              <div class="slider-row-modern" v-if="currentTheme.blurScope === 'all_containers'">
-                <div class="slider-info">
-                  <span class="s-label">卡片磨砂半径 (Card Blur)</span>
-                  <span class="s-val">{{ currentTheme.cardBlur }}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="32"
-                  v-model.number="currentTheme.cardBlur"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
-              </div>
-
-              <div class="slider-row-modern">
-                <div class="slider-info">
-                  <span class="s-label">卡片面板透明度 (Card Opacity)</span>
-                  <span class="s-val">{{ currentTheme.cardOpacity }}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="15"
-                  max="100"
-                  v-model.number="currentTheme.cardOpacity"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
-              </div>
-
-              <div class="slider-row-modern">
-                <div class="slider-info">
-                  <span class="s-label">饱和度增强 (Backdrop Saturate)</span>
-                  <span class="s-val">{{ currentTheme.cardSaturate }}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="100"
-                  max="250"
-                  v-model.number="currentTheme.cardSaturate"
-                  @input="handleCustomSlider"
-                  class="modern-range"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 选项卡 4：导入导出与分享 -->
-        <div v-show="currentTab === 'backup'" class="tab-pane">
-          <div class="section-card">
-            <div class="section-card-title">
-              <div class="title-with-badge">
-                <span>📦 方案导出与备份</span>
-                <span class="badge-sub">生成标准 JSON 文件</span>
-              </div>
-            </div>
-            <p class="section-lead-text">
-              您可以将您精心调试的主题参数、色彩搭配甚至整套本地壁纸导出为单文件，方便随时还原或与其他客户端分享。
-            </p>
-
-            <div class="backup-actions-grid">
-              <div class="backup-action-card" @click="handleExport(false)">
-                <div class="action-card-icon">📄</div>
-                <div class="action-card-info">
-                  <strong>导出主题参数配置</strong>
-                  <span>仅导出纯色彩、模糊度与样式规则（体积极小）</span>
-                </div>
-                <button class="pill-btn">导出 JSON</button>
-              </div>
-
-              <div
-                class="backup-action-card"
-                :class="{ disabled: !currentWallpaperUrl }"
-                @click="currentWallpaperUrl ? handleExport(true) : null"
-              >
-                <div class="action-card-icon">🎁</div>
-                <div class="action-card-info">
-                  <strong>导出完整配置包 (含高清壁纸)</strong>
-                  <span>将个性化背景与所有滤镜整合打包为完整工程文件</span>
-                </div>
-                <button class="pill-btn" :disabled="!currentWallpaperUrl">导出完整包</button>
-              </div>
-
-              <label class="backup-action-card import-card">
-                <div class="action-card-icon">📥</div>
-                <div class="action-card-info">
-                  <strong>从文件导入主题配置</strong>
-                  <span>选择已有的 .json 主题方案文件并立即渲染</span>
-                </div>
-                <span class="pill-btn primary">选择文件</span>
+              <div class="upload-area-box" :class="{ 'has-file': !!currentWallpaperUrl }">
                 <input
                   type="file"
-                  accept=".json"
+                  ref="fileInputRef"
+                  accept="image/*"
                   style="display: none"
-                  @change="handleImportFile"
+                  @change="handleImageSelect"
                 />
-              </label>
+              
+                <div v-if="currentWallpaperUrl" class="active-wallpaper-preview">
+                  <img :src="currentWallpaperUrl" alt="已加载壁纸" class="thumb-img" />
+                  <div class="thumb-meta">
+                    <div class="thumb-status">
+                      <span class="status-indicator"></span>
+                      <strong>已加载自定义本地壁纸</strong>
+                    </div>
+                    <p class="thumb-tip">当前正在使用您上传的高清壁纸作为全局底盘。</p>
+                    <div class="thumb-actions">
+                      <button class="small-action-btn" @click="triggerUpload">🔄 替换壁纸</button>
+                      <button class="small-action-btn danger" @click="handleClearBg">🗑️ 移除壁纸</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="upload-dropzone" @click="triggerUpload">
+                  <div class="dropzone-icon">📁</div>
+                  <div class="dropzone-text">
+                    <strong>点击选择本地图片作为背景</strong>
+                    <span>支持 JPG / PNG / WEBP / AVIF / SVG；iPhone 的 HEIC 需先转成 JPG</span>
+                  </div>
+                </div>
+
+                <!-- 上传结果反馈：格式不支持、已自动压缩等，都要让用户看得见 -->
+                <div
+                  v-if="wallpaperNotice"
+                  class="notice-banner"
+                  :class="{ error: wallpaperNoticeError }"
+                >
+                  <span>{{ wallpaperNotice }}</span>
+                </div>
+              </div>
+
+              <!-- 背景滤镜微调 -->
+              <div v-if="currentWallpaperUrl || currentTheme.bgEnabled" class="slider-box-wrapper">
+                <div class="slider-row-modern">
+                  <div class="slider-info">
+                    <span class="s-label">背景亮度</span>
+                    <span class="s-val">{{ currentTheme.bgBrightness }}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="20"
+                    max="150"
+                    v-model.number="currentTheme.bgBrightness"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+
+                <div class="slider-row-modern">
+                  <div class="slider-info">
+                    <span class="s-label">背景高斯模糊</span>
+                    <span class="s-val">{{ currentTheme.bgBlur }}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="35"
+                    v-model.number="currentTheme.bgBlur"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+
+                <div class="slider-row-modern">
+                  <div class="slider-info">
+                    <span class="s-label">背景不透明度</span>
+                    <span class="s-val">{{ currentTheme.bgOpacity }}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    v-model.number="currentTheme.bgOpacity"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 选项卡 3：磨砂玻璃与微调 -->
+          <div v-show="currentTab === 'glass'" class="tab-pane">
+            <!-- 磨砂模式架构选择 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>💎 磨砂玻璃架构模式</span>
+                  <span class="badge-sub">选择毛玻璃透光层级</span>
+                </div>
+              </div>
+
+              <div class="scope-options-grid">
+                <div
+                  class="scope-card"
+                  :class="{ active: currentTheme.blurScope === 'controls_only' }"
+                  @click="setBlurScope('controls_only')"
+                >
+                  <div class="scope-radio-row">
+                    <input
+                      type="radio"
+                      value="controls_only"
+                      v-model="currentTheme.blurScope"
+                      @change="handleCustomSlider"
+                    />
+                    <strong>仅按钮与功能控件磨砂 (推荐)</strong>
+                  </div>
+                  <p class="scope-desc">
+                    大容器高透不模糊，底盘壁纸完整高清呈现，所有按钮、标签、浮层具有晶莹剔透的亚克力磨砂质感。
+                  </p>
+                </div>
+
+                <div
+                  class="scope-card"
+                  :class="{ active: currentTheme.blurScope === 'all_containers' }"
+                  @click="setBlurScope('all_containers')"
+                >
+                  <div class="scope-radio-row">
+                    <input
+                      type="radio"
+                      value="all_containers"
+                      v-model="currentTheme.blurScope"
+                      @change="handleCustomSlider"
+                    />
+                    <strong>全局卡片整体磨砂</strong>
+                  </div>
+                  <p class="scope-desc">
+                    仪表盘、监控卡片及应用网格等大面板整体施加深邃的高斯模糊层，营造厚重的悬浮磨砂玻璃视效。
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <!-- 导入反馈横幅 -->
-            <transition name="fade">
-              <div v-if="importNotice" class="notice-banner" :class="{ error: importNoticeError }">
-                <span>{{ importNotice }}</span>
+            <!-- 质感参数滑块群 -->
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>🎛️ 亚克力质感参数精确调节</span>
+                </div>
               </div>
-            </transition>
+
+              <div class="slider-box-wrapper">
+                <div class="slider-row-modern" v-if="currentTheme.blurScope === 'controls_only'">
+                  <div class="slider-info">
+                    <span class="s-label">控件磨砂半径 (Control Blur)</span>
+                    <span class="s-val">{{ currentTheme.controlBlur ?? 16 }}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="32"
+                    v-model.number="currentTheme.controlBlur"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+
+                <div class="slider-row-modern" v-if="currentTheme.blurScope === 'all_containers'">
+                  <div class="slider-info">
+                    <span class="s-label">卡片磨砂半径 (Card Blur)</span>
+                    <span class="s-val">{{ currentTheme.cardBlur }}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="32"
+                    v-model.number="currentTheme.cardBlur"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+
+                <div class="slider-row-modern">
+                  <div class="slider-info">
+                    <span class="s-label">卡片面板透明度 (Card Opacity)</span>
+                    <span class="s-val">{{ currentTheme.cardOpacity }}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="15"
+                    max="100"
+                    v-model.number="currentTheme.cardOpacity"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+
+                <div class="slider-row-modern">
+                  <div class="slider-info">
+                    <span class="s-label">饱和度增强 (Backdrop Saturate)</span>
+                    <span class="s-val">{{ currentTheme.cardSaturate }}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="100"
+                    max="250"
+                    v-model.number="currentTheme.cardSaturate"
+                    @input="handleCustomSlider"
+                    class="modern-range"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 选项卡 4：导入导出与分享 -->
+          <div v-show="currentTab === 'backup'" class="tab-pane">
+            <div class="section-card">
+              <div class="section-card-title">
+                <div class="title-with-badge">
+                  <span>📦 方案导出与备份</span>
+                  <span class="badge-sub">生成标准 JSON 文件</span>
+                </div>
+              </div>
+              <p class="section-lead-text">
+                您可以将您精心调试的主题参数、色彩搭配甚至整套本地壁纸导出为单文件，方便随时还原或与其他客户端分享。
+              </p>
+
+              <div class="backup-actions-grid">
+                <div class="backup-action-card" @click="handleExport(false)">
+                  <div class="action-card-icon">📄</div>
+                  <div class="action-card-info">
+                    <strong>导出主题参数配置</strong>
+                    <span>仅导出纯色彩、模糊度与样式规则（体积极小）</span>
+                  </div>
+                  <button class="pill-btn">导出 JSON</button>
+                </div>
+
+                <div
+                  class="backup-action-card"
+                  :class="{ disabled: !currentWallpaperUrl }"
+                  @click="currentWallpaperUrl ? handleExport(true) : null"
+                >
+                  <div class="action-card-icon">🎁</div>
+                  <div class="action-card-info">
+                    <strong>导出完整配置包 (含高清壁纸)</strong>
+                    <span>将个性化背景与所有滤镜整合打包为完整工程文件</span>
+                  </div>
+                  <button class="pill-btn" :disabled="!currentWallpaperUrl">导出完整包</button>
+                </div>
+
+                <label class="backup-action-card import-card">
+                  <div class="action-card-icon">📥</div>
+                  <div class="action-card-info">
+                    <strong>从文件导入主题配置</strong>
+                    <span>选择已有的 .json 主题方案文件并立即渲染</span>
+                  </div>
+                  <span class="pill-btn primary">选择文件</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    style="display: none"
+                    @change="handleImportFile"
+                  />
+                </label>
+              </div>
+
+              <!-- 导入反馈横幅 -->
+              <transition name="fade">
+                <div v-if="importNotice" class="notice-banner" :class="{ error: importNoticeError }">
+                  <span>{{ importNotice }}</span>
+                </div>
+              </transition>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 底部操作与重置栏 -->
-      <div class="modal-ftr-v2">
-        <div class="ftr-left-status">
-          <span class="status-dot"></span>
-          <span>当前主题：<strong>{{ currentTheme.name }}</strong> ({{ currentTheme.id }})</span>
-        </div>
-        <div class="ftr-right-buttons">
-          <button class="btn-ghost" @click="resetToDefault">恢复默认</button>
-          <button class="btn-primary" @click="$emit('close')">完成并保存</button>
+        <!-- 底部操作与重置栏 -->
+        <div class="modal-ftr-v2">
+          <div class="ftr-left-status">
+            <span class="status-dot"></span>
+            <span>当前主题：<strong>{{ currentTheme.name }}</strong> ({{ currentTheme.id }})</span>
+          </div>
+          <div class="ftr-right-buttons">
+            <button class="btn-ghost" @click="resetToDefault">恢复默认</button>
+            <button class="btn-primary" @click="$emit('close')">完成并保存</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -731,20 +733,7 @@ async function handleImportFile(e) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
-@keyframes modalScaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
 /* 顶部标题区 */
 .modal-hdr-v2 {
   display: flex;
@@ -1003,6 +992,9 @@ async function handleImportFile(e) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* 选项卡用 v-show 切换：从 display:none 恢复显示时浏览器会重播 CSS 动画，
+     所以这里挂一次进场动画就够了，不需要额外的 <Transition> 包裹。 */
+  animation: miSwapIn var(--mi-dur) var(--mi-ease-out) both;
 }
 
 .section-card {

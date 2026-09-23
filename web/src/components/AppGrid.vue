@@ -12,9 +12,10 @@
 
     <div class="grid-container">
       <div
-        v-for="app in apps"
+        v-for="(app, idx) in apps"
         :key="app.id"
         class="app-card"
+        :style="{ '--i': idx }"
         @click="handleAppClick(app)"
       >
         <div class="icon-wrapper">
@@ -129,6 +130,11 @@ function handleAppClick(app) {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   position: relative;
+  /* 九宫格逐格淡入上浮；延迟由模板注入的 --i 决定。
+     用 backwards：both 会让结束帧的 transform 常驻，把 .app-card:hover
+     的 translateY(-2px) 顶掉，卡片就没有悬停反馈了。 */
+  animation: miRiseIn var(--mi-dur-slow) var(--mi-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
 }
 
 .app-card:hover {
